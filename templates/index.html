@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Scent Advisor - Find Your Signature Scent</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/index.css">
+</head>
+<body>
+    <div class="background-decor blur-1"></div>
+    <div class="background-decor blur-2"></div>
+
+    <div class="app-layout-wrapper">
+        <!-- Left Panel: Conversational Chat UI -->
+        <div class="advisor-container">
+            <!-- Header / Navigation info -->
+            <div class="advisor-header">
+                <div class="brand">
+                    <span class="sparkle">✦</span>
+                    <span class="brand-title">AI Scent Advisor</span>
+                </div>
+                <button class="info-btn" id="infoBtn" aria-label="Information">i</button>
+            </div>
+
+            <!-- Conversational / Response Panel -->
+            <div id="chatHistory" class="chat-history hidden">
+                <!-- Dynamically populated messages will go here -->
+            </div>
+
+            <!-- Landing Screen Content -->
+            <div id="landingView" class="landing-view">
+                <h1 class="main-title">Are we finding a signature scent for you, or the perfect gift for someone else?</h1>
+            </div>
+
+            <!-- Query Form / Search Bar -->
+            <form id="advisorForm" class="advisor-form">
+                <div class="search-wrapper">
+                    <input type="text" id="userInput" placeholder="I'm looking for..." required autocomplete="off">
+                    <button type="submit" class="submit-btn" aria-label="Send query">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Dynamic Loading indicator -->
+            <div id="loadingIndicator" class="loading-indicator hidden">
+                <div class="spinner"></div>
+                <span>Consulting scent profiles...</span>
+            </div>
+
+            <!-- Quick Prompts Screen Content -->
+            <div id="quickPromptsContainer" class="quick-prompts-container">
+                <h2 class="sub-title">Quick Prompts:</h2>
+                <div class="prompts-grid">
+                    <button class="prompt-pill" data-prompt="Elegant scent for the office">Elegant scent for the office</button>
+                    <button class="prompt-pill" data-prompt="My new signature scent">My new signature scent</button>
+                    <button class="prompt-pill" data-prompt="Birthday surprise for a friend">Birthday surprise for a friend</button>
+                    <button class="prompt-pill" data-prompt="Seasonal cologne for myself">Seasonal cologne for myself</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Side Recommendations Display -->
+        <div id="recommendationsSection" class="recommendations-side-panel hidden">
+            <h3 class="section-title">Recommended Fragrances</h3>
+            <div id="productsGrid" class="products-grid-side">
+                <!-- Recommendations will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Script loading -->
+    <script src="/static/js/index.js"></script>
+</body>
+</html>
