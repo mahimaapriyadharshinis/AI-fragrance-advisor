@@ -85,19 +85,89 @@ class ChatbotView(APIView):
             query = {}
             if gender_filter and gender_filter != "for women and men":
                 query["gender"] = gender_filter
-            if accords_list:
-                # To match elements inside a list field, MongoDB queries the scalar or uses '$in' with a list of values.
-                # Standard syntax is {"field": {"$in": accords_list}} where accords_list is a list of strings.
-                query["main_accords"] = {"$in": [a.lower().strip() for a in accords_list]}
+            
+            # Match based on scent notes (accords) or dialogue description keywords
+            # Find document matches where accords intersect or match details
+            flat_accords = []
+            if isinstance(accords_list, list):
+                for item in accords_list:
+                    if isinstance(item, list):
+                        for subitem in item:
+                            if isinstance(subitem, str):
+                                flat_accords.append(subitem)
+                    elif isinstance(item, str):
+                        flat_accords.append(item)
+            elif isinstance(accords_list, str):
+                flat_accords.append(accords_list)
+
+            search_terms = [a.lower().strip() for a in flat_accords if isinstance(a, str) and a.strip()]
+            
+            if search_terms:
+                query["$or"] = [
+                    {"main_accords": {"$in": search_terms}},
+                    {"description": {"$regex": "|".join(search_terms), "$options": "i"}}
+                ]
                 
-            matched_cursor = db["fragrances"].find(query).sort("rating_value", -1).limit(3)
-            matched_perfumes = list(matched_cursor)
+            # Fetch candidate products matching the criteria (up to 200)
+            candidates = list(db["fragrances"].find(query).limit(200))
+            
+            # Fallback 1: Try finding perfumes matching accords only (no description regex)
+            if len(candidates) < 10 and search_terms:
+                fallback_query = {}
+                if gender_filter and gender_filter != "for women and men":
+                    fallback_query["gender"] = gender_filter
+                fallback_query["main_accords"] = {"$in": search_terms}
+                
+                cursor = db["fragrances"].find(fallback_query).limit(100)
+                for doc in cursor:
+                    if doc["_id"] not in [c["_id"] for c in candidates]:
+                        candidates.append(doc)
+            
+            # Fallback 2: Search for description regex without main_accords, or filter by gender only
+            if len(candidates) < 10:
+                gender_query = {}
+                if gender_filter and gender_filter != "for women and men":
+                    gender_query["gender"] = gender_filter
+                
+                cursor = db["fragrances"].find(gender_query).limit(100)
+                for doc in cursor:
+                    if doc["_id"] not in [c["_id"] for c in candidates]:
+                        candidates.append(doc)
+            
+            # Fallback 3: If still under 10, just grab anything from the collection
+            if len(candidates) < 10:
+                cursor = db["fragrances"].find({}).limit(100)
+                for doc in cursor:
+                    if doc["_id"] not in [c["_id"] for c in candidates]:
+                        candidates.append(doc)
+
+            # --- STAGE 2.5: RELEVANCE SCORING & RANKING ---
+            scored_candidates = []
+            for perf in candidates:
+                score = 0
+                accords = [a.lower().strip() for a in perf.get("main_accords", []) if isinstance(a, str)]
+                description = perf.get("description", "").lower()
+                
+                for term in search_terms:
+                    # 20 points for each matching accord
+                    if term in accords:
+                        score += 20
+                    # 2 points for every occurrence of the keyword in the description
+                    score += description.count(term) * 2
+                
+                scored_candidates.append((score, perf))
+            
+            # Sort by score descending to get the best matches first
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            matched_perfumes = [item[1] for item in scored_candidates[:3]]
             
             # --- STAGE 3: CONVERSATIONAL CONVERSION PITCH GENERATION ---
             catalog_context = ""
             serialized_products = []
+            allowed_names = []
             for index, perf in enumerate(matched_perfumes):
                 catalog_context += f"Option {index+1}: Name: {perf['name']}, Accords: {perf['main_accords']}, Description: {perf['description']}\n"
+                allowed_names.append(perf['name'])
                 serialized_products.append({
                     "name": perf["name"],
                     "rating": perf["rating_value"],
@@ -107,17 +177,18 @@ class ChatbotView(APIView):
             sales_system_prompt = (
                 f"You are the AI Scent Advisor. Recommend these matching perfumes clearly and persuasively using the catalog:\n{catalog_context}\n"
                 f"Guidelines:\n"
-                f"1. You MUST limit choices exclusively to the provided dataset catalog. Do NOT hallucinate, invent, or suggest any perfume names not explicitly listed in the catalog above.\n"
-                f"2. For each recommendation, state the exact Name of the perfume very clearly.\n"
+                f"1. You MUST suggest exactly the following 3 perfumes: {', '.join(allowed_names)}. Do NOT omit any of them, and do NOT suggest any other names.\n"
+                f"2. For each recommendation, state the exact Name of the perfume very clearly. Never make up names not in this catalog list.\n"
                 f"3. Keep the pitch short, elegant, and persuasive.\n"
-                f"4. Do NOT invite the user to private viewings, store appointments, or offline services. This is strictly a digital matchmaker.\n"
-                f"5. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
-                f"6. Suggest that the user can ask to explore more options or refine their search parameters if they wish."
+                f"4. You MUST address all aspects of the user's specific request: {dialog_transcript}. Detail why these specific matches fit their theme and notes.\n"
+                f"5. Do NOT invite the user to private viewings, store appointments, or offline services.\n"
+                f"6. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
+                f"7. Suggest that the user can ask to explore more options or refine their search parameters if they wish."
             )
 
             rec_messages = [
                 {"role": "system", "content": sales_system_prompt},
-                {"role": "user", "content": f"Explain why the matching perfumes from the catalog fit the preferences: {accords_list}."}
+                {"role": "user", "content": f"Explain why the 3 matching perfumes from the catalog fit the user's request: {dialog_transcript}"}
             ]
             
             final_recommendation_pitch = call_sarvam_ai(rec_messages)
