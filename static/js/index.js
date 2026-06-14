@@ -47,6 +47,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Render user message bubble
         appendChatBubble(query, 'user');
 
+        // Disable and fade out previous interactive suggestion pills in chat logs
+        document.querySelectorAll('.chat-history .prompt-pill').forEach(btn => {
+            btn.style.pointerEvents = 'none';
+            btn.style.opacity = '0.5';
+        });
+
         // Prepare and show loader
         loadingIndicator.classList.remove('hidden');
         recommendationsSection.classList.add('hidden');
@@ -72,7 +78,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             
             // Render Bot response dialogue
-            appendChatBubble(data.bot_reply, 'bot');
+            const replies = data.bot_reply.split('[NEXT_MESSAGE]');
+            replies.forEach(reply => {
+                if (reply.trim()) {
+                    appendChatBubble(reply.trim(), 'bot');
+                }
+            });
 
             // Save this exchange in memory
             conversationHistory.push({role: "user", content: query});
