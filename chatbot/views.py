@@ -200,10 +200,10 @@ class ChatbotView(APIView):
                 f"8. Suggest that the user can ask to explore more options or refine their search parameters if they wish."
             )
 
-            rec_messages = [{"role": "system", "content": sales_system_prompt}]
-            for msg in chat_history:
-                rec_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-            rec_messages.append({"role": "user", "content": user_message})
+            rec_messages = [
+                {"role": "system", "content": sales_system_prompt},
+                {"role": "user", "content": f"Please write the enthusiastic sales pitches for the matching perfumes based on the customer's request history:\n{dialog_transcript}"}
+            ]
             
             final_recommendation_pitch = call_sarvam_ai(rec_messages)
             if not final_recommendation_pitch:
