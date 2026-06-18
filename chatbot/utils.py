@@ -79,7 +79,8 @@ def call_sarvam_ai(messages_list):
     payload = {
         "model": "sarvam-30b",
         "messages": messages_list,
-        "temperature": 0.4 # Balanced temperature for persuasive and luxurious recommendations
+        "temperature": 0.4, # Balanced temperature for persuasive and luxurious recommendations
+        "max_tokens": 3500
     }
     
     max_retries = 3
@@ -87,23 +88,33 @@ def call_sarvam_ai(messages_list):
     
     for attempt in range(max_retries):
         try:
-            # 30-second timeout per attempt
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            # 60-second timeout per attempt to accommodate model reasoning latency
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
             if response.status_code == 200:
-                return response.json()['choices'][0]['message']['content']
+                content = response.json()['choices'][0]['message']['content']
+                if content is None:
+                    print(f"[ERROR call_sarvam_ai] API returned 200 but content is null. Response: {response.text}")
+                return content
             elif response.status_code in [429, 500, 502, 503, 504]:
                 # Retry on rate limits or temporary server-side errors
                 last_error = f"Error from Sarvam API: {response.status_code} - {response.text}"
+                print(f"[WARN call_sarvam_ai] Attempt {attempt+1} failed: {last_error}")
                 time.sleep(2 ** attempt) # Exponential delay: 1s, 2s, 4s
                 continue
             else:
                 # Return immediately on client errors (400, 401, 403) which won't change on retry
-                return f"Error from Sarvam API: {response.status_code} - {response.text}"
+                last_error = f"Error from Sarvam API: {response.status_code} - {response.text}"
+                print(f"[ERROR call_sarvam_ai] Client Error: {last_error}")
+                return last_error
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             last_error = f"Connection Failed: {str(e)}"
+            print(f"[WARN call_sarvam_ai] Attempt {attempt+1} exception: {last_error}")
             time.sleep(2 ** attempt)
             continue
         except Exception as e:
-            return f"Connection Failed: {str(e)}"
+            last_error = f"Connection Failed: {str(e)}"
+            print(f"[ERROR call_sarvam_ai] Unexpected Exception: {last_error}")
+            return last_error
             
+    print(f"[ERROR call_sarvam_ai] All attempts exhausted. Last error: {last_error}")
     return last_error

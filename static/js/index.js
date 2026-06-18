@@ -8,19 +8,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const recommendationsSection = document.getElementById('recommendationsSection');
     const productsGrid = document.getElementById('productsGrid');
     const infoBtn = document.getElementById('infoBtn');
-
+    const resetBtn = document.getElementById('resetBtn');
+ 
     // Maintain running conversational memory history locally in frontend session
     let conversationHistory = [];
-
+    let activeRecommendations = [];
+    let activeOtherRecommendations = [];
+    let activeDislikedPerfumes = [];
+    let activeBrandFilter = null;
+    let activeSortByBest = false;
+    let activeUserTurns = 0;
+ 
     // Attach click events to the quick-prompt pills
-    document.querySelectorAll('.prompt-pill').forEach(pill => {
+    document.querySelectorAll('.prompts-grid .prompt-pill').forEach(pill => {
         pill.addEventListener('click', () => {
             const promptText = pill.getAttribute('data-prompt');
             userInput.value = promptText;
             submitQuery(promptText);
         });
     });
-
+ 
     advisorForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const query = userInput.value.trim();
@@ -28,36 +35,62 @@ document.addEventListener('DOMContentLoaded', () => {
             submitQuery(query);
         }
     });
-
+ 
     infoBtn.addEventListener('click', () => {
         alert("AI Scent Advisor: Designed to match your personality & preferences with our luxury fragrance database using advanced Sarvam AI LLM capabilities.");
     });
 
+    // Reset button clears history and returns to the fresh landing screen
+    resetBtn.addEventListener('click', () => {
+        conversationHistory = [];
+        activeRecommendations = [];
+        activeOtherRecommendations = [];
+        activeDislikedPerfumes = [];
+        activeBrandFilter = null;
+        activeSortByBest = false;
+        activeUserTurns = 0;
+        userInput.value = '';
+        
+        // Restore landing layout
+        landingView.classList.remove('hidden');
+        quickPromptsContainer.classList.remove('hidden');
+        chatHistory.classList.add('hidden');
+        resetBtn.style.display = 'none';
+        recommendationsSection.classList.add('hidden');
+        productsGrid.innerHTML = '';
+        
+        // Keep only the first welcome message bubble in chat history
+        chatHistory.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start; width: 100%;">
+                <div class="chat-bubble bot">Welcome! Let us guide you to your perfect fragrance match. Tell us about your preferred scent notes, the vibe you want to create, or the occasion, and our AI Scent Advisor will find the perfect match tailored just for you.</div>
+            </div>
+        `;
+    });
+ 
     async function submitQuery(query) {
         // Clear input field
         userInput.value = '';
-
+ 
         // Hide landing layout features & quick prompts on first query to transform into chat mode
         landingView.classList.add('hidden');
         quickPromptsContainer.classList.add('hidden');
-
-        // Show conversational dialogue block
+ 
+        // Show conversational dialogue block and reset button
         chatHistory.classList.remove('hidden');
-
+        resetBtn.style.display = 'block';
+ 
         // Render user message bubble
         appendChatBubble(query, 'user');
-
+ 
         // Disable and fade out previous interactive suggestion pills in chat logs
         document.querySelectorAll('.chat-history .prompt-pill').forEach(btn => {
             btn.style.pointerEvents = 'none';
             btn.style.opacity = '0.5';
         });
-
+ 
         // Prepare and show loader
         loadingIndicator.classList.remove('hidden');
-        recommendationsSection.classList.add('hidden');
-        productsGrid.innerHTML = '';
-
+ 
         try {
             const response = await fetch('/api/chat/', {
                 method: 'POST',
@@ -66,15 +99,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({
                     message: query,
-                    history: conversationHistory
+                    history: conversationHistory,
+                    recommended_perfumes: activeRecommendations,
+                    other_perfumes: activeOtherRecommendations,
+                    brand_filter: activeBrandFilter,
+                    disliked_perfumes: activeDislikedPerfumes,
+                    sort_by_best: activeSortByBest,
+                    user_turns: activeUserTurns
                 })
             });
-
+ 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
                 throw new Error(errData.error || `Server returned status: ${response.status}`);
             }
-
+ 
             const data = await response.json();
             
             // Render Bot response dialogue
@@ -84,20 +123,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     appendChatBubble(reply.trim(), 'bot');
                 }
             });
-
+ 
             // Save this exchange in memory
             conversationHistory.push({role: "user", content: query});
             conversationHistory.push({role: "assistant", content: data.bot_reply});
-
+ 
             // Render matching recommended product cards if returned
             if (data.recommended_products && data.recommended_products.length > 0) {
+                activeRecommendations = data.recommended_products;
+                activeOtherRecommendations = data.other_products || [];
                 renderProducts(data.recommended_products);
                 recommendationsSection.classList.remove('hidden');
-                
-                // Clear history to restart a new recommendation flow next time
-                conversationHistory = [];
+            } else if (activeRecommendations.length > 0) {
+                // Keep showing the active recommendations during follow-ups/Q&A
+                renderProducts(activeRecommendations);
+                recommendationsSection.classList.remove('hidden');
+            } else {
+                recommendationsSection.classList.add('hidden');
             }
-
+            activeDislikedPerfumes = data.disliked_perfumes || [];
+            activeBrandFilter = data.brand_filter || null;
+            activeSortByBest = data.sort_by_best || false;
+            activeUserTurns = data.user_turns || 0;
+ 
         } catch (error) {
             console.error('Error fetching chat response:', error);
             appendChatBubble(`My apologies. I encountered an issue connecting to the perfume directory server. Detail: ${error.message}`, 'bot');
@@ -125,11 +173,16 @@ document.addEventListener('DOMContentLoaded', () => {
             let options = [];
             let match;
             while ((match = optionRegex.exec(text)) !== null) {
-                options.push(match[1]);
+                if (match[1] && match[1].trim()) {
+                    options.push(match[1].trim());
+                }
             }
             
             // Clean text of brackets
             let cleanText = text.replace(optionRegex, '').trim();
+            if (!cleanText && options.length > 0) {
+                cleanText = "Here are some notes and accords you can choose from:";
+            }
             cleanText = cleanText
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                 .replace(/\*(.*?)\*/g, '<em>$1</em>')
@@ -174,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderProducts(products) {
+        productsGrid.innerHTML = ''; // Clear the grid to avoid duplication
         products.forEach(product => {
             const card = document.createElement('div');
             card.className = 'product-card';
