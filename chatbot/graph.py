@@ -90,19 +90,58 @@ def router_edge(state: AgentState) -> str:
             return "chat"
             
     # Reliable fast-fallback rule parser if LLM fails or times out
+    import re
     user_msg_lower = user_msg.lower()
     
     new_search_keywords = ["start over", "new search", "different perfume", "recommend a gift", "gift for my"]
     if any(w in user_msg_lower for w in new_search_keywords):
         return "new_search"
         
+    # Check if the user message is related to perfumes/scents using the MongoDB dataset
+    db = get_mongo_db()
+    stop_words = {"what", "is", "a", "the", "who", "which", "would", "how", "do", "you", "me", "this", "these", "it", "with", "for", "and", "or", "in", "of", "about", "detail", "reason", "explain", "why", "can", "have", "has", "does"}
+    query_words = [w.strip("?,.!:;\"'") for w in user_msg_lower.split() if len(w.strip("?,.!:;\"'")) > 2 and w.strip("?,.!:;\"'") not in stop_words]
+    
+    # Also support single-word fragrance topics in case they are not in the database description
+    scent_topics = {"longevity", "concentration", "projection", "sillage", "notes", "accord", "accords", "perfume", "fragrance", "edp", "edt", "cologne", "parfum"}
+    
+    is_related = False
+    if any(w in scent_topics for w in query_words):
+        is_related = True
+    elif query_words:
+        # Run a quick check in the database to see if any word matches main_accords or name/description
+        escaped_words = [re.escape(w) for w in query_words if w]
+        if escaped_words:
+            regex_pattern = "|".join([f"\\b{w}\\b" for w in escaped_words])
+            db_query = {
+                "$or": [
+                    {"main_accords": {"$in": query_words}},
+                    {"name": {"$regex": regex_pattern, "$options": "i"}},
+                    {"description": {"$regex": regex_pattern, "$options": "i"}}
+                ]
+            }
+            try:
+                is_related = db["fragrances"].find_one(db_query) is not None
+            except Exception:
+                is_related = False
+                
+    is_greet = is_greeting(user_msg_lower)
+    
+    # If the query has nothing to do with fragrances, brands, or notes in the database, and is not a greeting, decline it
+    if not is_related and not is_greet:
+        return "decline"
+        
     q_words = ["why", "reason", "explain", "detail", "more about", "tell me about", "which is", "recommend option", "which of these", "what is", "how do", "is it", "difference", "how long", "can i", "what notes", "does it have"]
     is_asking_qa = any(w in user_msg_lower for w in q_words) or (has_recommended and ("first" in user_msg_lower or "second" in user_msg_lower or "third" in user_msg_lower))
     
     if is_asking_qa:
+        # Check if the question is database-related or general advice
+        db_keywords = ["rating", "rated", "compare", "perfume", "fragrance", "database", "brand", "best in", "highest in", "review", "review count", "how many"]
+        if any(w in user_msg_lower for w in db_keywords):
+            return "database_qa"
         return "qa"
         
-    direct_req_words = ["best", "recommend", "show me", "suggest", "find", "give me", "list", "top", "chanel", "armaf", "ariana grande", "compare", "differ"]
+    direct_req_words = ["compare", "differ", "contrasting", "versus"]
     is_direct_recommendation = any(w in user_msg_lower for w in direct_req_words)
     is_refining = has_recommended and ("add " in user_msg_lower or "with " in user_msg_lower or "change " in user_msg_lower or "instead " in user_msg_lower or "dislike" in user_msg_lower or "don't like" in user_msg_lower or "do not like" in user_msg_lower)
     
@@ -378,9 +417,16 @@ def query_database_node(state: AgentState) -> Dict[str, Any]:
             if doc["_id"] not in [c["_id"] for c in candidates]:
                 candidates.append(doc)
                 
-    # Score Candidates by note intersection relevance
+    # Score and strictly filter Candidates by gender and note intersection relevance
     scored_candidates = []
     for perf in candidates:
+        # Enforce strict gender check to prevent leaks in fallback queries
+        perf_gender = (perf.get("gender") or "").lower().strip()
+        if gender_filter == "for women" and perf_gender == "for men":
+            continue
+        if gender_filter == "for men" and perf_gender == "for women":
+            continue
+            
         score = 0
         accords = [a.lower().strip() for a in (perf.get("main_accords") or []) if isinstance(a, str)]
         description = (perf.get("description") or "").lower()
@@ -401,12 +447,10 @@ def query_database_node(state: AgentState) -> Dict[str, Any]:
         
     scored_candidates.sort(key=lambda x: x[0], reverse=True)
     
-    if sort_by_best:
-        matched_perfumes = candidates[:3]
-        other_perfumes = candidates[3:6]
-    else:
-        matched_perfumes = [item[1] for item in scored_candidates[:3]]
-        other_perfumes = [item[1] for item in scored_candidates[3:6]]
+    # Always slice from the sorted list to prioritize high relevance matches
+    sorted_candidates_flat = [item[1] for item in scored_candidates]
+    matched_perfumes = sorted_candidates_flat[:3]
+    other_perfumes = sorted_candidates_flat[3:6]
     
     # Convert ObjectIds to string for JSON serialization
     serialized_primary = []
@@ -476,11 +520,15 @@ def generate_pitch_node(state: AgentState) -> Dict[str, Any]:
     
     if not pitch or not isinstance(pitch, str) or "Error from Sarvam API" in pitch or "Connection Failed" in pitch:
         # Graceful fallback database descriptions to prevent 502 Bad Gateway
-        pitch = "I have curated these three exquisite fragrances that match your preferences perfectly:\n\n"
+        # Format with double newlines so the frontend splits them into clean separate bubbles
+        primary_paragraphs = []
         for p in recommended:
-            pitch += f"{p['name']}\n{p['description']}\n\n"
+            desc_text = p.get('description', '')
+            primary_paragraphs.append(f"{p['name']}\n{desc_text}")
+        
+        pitch = "\n\n".join(primary_paragraphs)
          
-        pitch += "[NEXT_MESSAGE]\nYou should also explore these captivating alternative selections with similar notes:\n\n"
+        pitch += "\n\n[NEXT_MESSAGE]\nYou should also explore these captivating alternative selections with similar notes:\n\n"
         pitch += f"{', '.join(other_names)}"
             
     return {"bot_reply": pitch}
@@ -545,6 +593,7 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
         f"User question: {user_msg}\n"
         "Guidelines:\n"
         "- For name, description, or perfumer searches, use case-insensitive regex, e.g. {\"name\": {\"$regex\": \"Hayati\", \"$options\": \"i\"}}\n"
+        "- If the user explicitly asks for exclusion or negation (e.g. 'without vanilla', 'excluding rose', 'no musk'), use MongoDB negation operators like '$nin' or '$not' with regex, e.g. {\"main_accords\": {\"$nin\": [\"vanilla\"]}} or {\"description\": {\"$not\": {\"$regex\": \"rose\", \"$options\": \"i\"}}}\n"
         "- Return ONLY the JSON query filter block and absolutely nothing else. Do not wrap in markdown code blocks."
     )
     
