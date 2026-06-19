@@ -46,7 +46,7 @@ def router_edge(state: AgentState) -> str:
         return "decline"
         
     # Intercept queries about database ratings, comparative questions, or general listings
-    db_qa_keywords = ["whole collection", "entire collection", "whole sollection", "entire sollection", "highest rated perfume", "top rated perfume", "best perfume in", "all perfumes", "compare", "difference between"]
+    db_qa_keywords = ["whole collection", "entire collection", "whole sollection", "entire sollection", "highest rated", "top rated", "best perfume", "best fragrance", "most popular", "all perfumes", "compare", "difference between"]
     if any(k in user_msg_lower for k in db_qa_keywords):
         return "database_qa"
 
@@ -59,7 +59,7 @@ def router_edge(state: AgentState) -> str:
         "You are a routing supervisor. Your job is to classify the user's latest message intent into one of five categories:\n"
         "- 'decline': The query is completely off-topic (unrelated to perfumes, fragrances, scent notes, smelling, or cosmetic styling).\n"
         "- 'new_search': The user explicitly wants to start a completely new perfume search from scratch or find a new scent for a different person/occasion/style, completely independent of the active recommended options.\n"
-        "- 'database_qa': The user is asking a specific question about the fragrance database, ratings, perfumers, comparing specific perfumes, or requesting info/listings (e.g., 'compare Junoon and Hayati', 'which is the highest rated?', 'what notes are in Hayati?', 'do you have perfumes by Christian Carbonnel?').\n"
+        "- 'database_qa': The user is asking a specific question about the fragrance database, ratings, perfumers, comparing specific perfumes, requesting info/listings, or asking for the 'best', 'highest rated', or 'most popular' perfumes (e.g., 'whats the best perfume for women', 'compare Junoon and Hayati', 'which is the highest rated?', 'what notes are in Hayati?', 'do you have perfumes by Christian Carbonnel?').\n"
         "- 'general_qa': General questions about perfume terms (EDP vs EDT), longevity, application, how to use scent, or general advice.\n"
         "- 'scent_matching': The user is looking for perfume suggestions or recommendations based on taste, style, or occasion (e.g., 'recommend me a perfume for the office', 'find my signature scent'), OR sending simple greetings/conversation starters, OR refining active recommendations (e.g. 'add vanilla', 'instead of that').\n\n"
         f"User Message: {user_msg}\n"
@@ -550,13 +550,13 @@ def qa_node(state: AgentState) -> Dict[str, Any]:
         
     qa_system_prompt = (
         "You are the ultimate luxury AI Scent Advisor. Answer the user's fragrance-related questions accurately and elegantly.\n"
-        "If they are asking about previously recommended perfumes (such as why a perfume was recommended), use the provided context to give a clear, specific explanation by explicitly mapping the perfume's actual Main Accords and Description notes to the user's desired preferences. Do not just say 'it matches your preferences'; explicitly list which of the perfume's accords (like vanilla, woody, etc.) match their request.\n"
+        "If they are asking about previously recommended perfumes (such as why a perfume was recommended or explaining a choice), use the provided context to give a clear, specific explanation by explicitly mapping the perfume's actual Main Accords and Description notes to the user's desired preferences. Present this explanation strictly as a neat, luxury-styled list of bullet points (maximum 3 bullet points) where each bullet point starts with the solid circle symbol '●' (do not use asterisks '*' or hyphens '-'), is rich and highly descriptive, and elegantly details how specific accords (like vanilla, woody, etc.) map directly to their request. You MUST add a blank line between each bullet point to ensure they are spaced out nicely and are not grouped close together.\n"
         "If they are asking about previously recommended perfumes, use this context:\n"
         f"{perfumes_str}\n"
         "If they are asking general questions about scent notes, longevity, perfume application, classifications (e.g., Vetiver, EDP vs EDT), or general styling advice, answer them accurately and beautifully using your expert fragrance knowledge.\n"
         "Guidelines:\n"
         "1. Be extremely enthusiastic, welcoming, and professional.\n"
-        "2. Answer their question completely and accurately. Keep it elegant and conversational (max 4 sentences total).\n"
+        "2. Answer the question completely and accurately. Present your response strictly using a solid circle symbol '●' (do not use asterisks '*' or hyphens '-') for bullet points (maximum 3 bullet points) where each bullet point is rich, descriptive, and elegantly detailed. You MUST add a blank line between each bullet point to keep the response clean, well-spaced, and easy to read.\n"
         "3. Keep your internal reasoning/thinking extremely concise (under 2 sentences) to prevent cut-offs.\n"
         "4. Do NOT invite the user to private viewings or offline appointments.\n"
         "5. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
@@ -609,15 +609,24 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
                 clean_json = clean_json[4:]
         query = json.loads(clean_json.strip())
     except Exception:
-        # Fallback keyword search (excluding common query terms/stop words to target specific perfume names)
-        stop_words = {"compare", "notes", "give", "best", "these", "women", "woman", "mens", "perfume", "perfumes", "fragrance", "fragrances", "select", "rating", "rated", "highest", "which", "would", "what", "about", "detail", "details", "for"}
+        # Fallback keyword and gender extraction if LLM fails or returns invalid/null JSON
+        query = {}
+        msg_lower = user_msg.lower()
+        if "women and men" in msg_lower or "unisex" in msg_lower or "both" in msg_lower:
+            query["gender"] = "for women and men"
+        elif "women" in msg_lower or "woman" in msg_lower:
+            query["gender"] = "for women"
+        elif "men" in msg_lower or "man" in msg_lower:
+            query["gender"] = "for men"
+            
+        stop_words = {"compare", "notes", "give", "best", "these", "women", "woman", "mens", "perfume", "perfumes", "fragrance", "fragrances", "select", "rating", "rated", "highest", "which", "would", "what", "about", "detail", "details", "for", "whats", "what's", "tell", "show", "list", "find", "search", "some", "top", "most", "popular"}
         keywords = [w.strip("?,.!:;\"'") for w in user_msg.split() if len(w) > 3 and w.lower().strip("?,.!:;\"'") not in stop_words]
         if keywords:
             regex_str = "|".join(keywords)
-            query = {"$or": [
+            query["$or"] = [
                 {"name": {"$regex": regex_str, "$options": "i"}},
                 {"description": {"$regex": regex_str, "$options": "i"}}
-            ]}
+            ]
             
     # Clean and sanitize the query parameters to match MongoDB exactly
     print(f"[DEBUG database_qa_node] Generated raw query: {query}")
@@ -630,20 +639,39 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
                 query["gender"] = "for women"
             elif "men" in g_val or "man" in g_val:
                 query["gender"] = "for men"
-        # If the user is asking general questions, make sure the query filter doesn't restrict to empty keys
-        # If the query is empty or just searching for ratings, remove name restrictions
-        if "name" in query and isinstance(query["name"], dict) and "$regex" in query["name"]:
-            name_val = str(query["name"]["$regex"]).lower()
-            if name_val in ["top", "best", "highest", "rated", "perfume", "perfumes", "fragrance", "fragrances"]:
+        # Clean both name and description from general query or superlative words
+        bad_words = ["top", "best", "highest", "rated", "perfume", "perfumes", "fragrance", "fragrances", "woman", "women", "man", "men", "whats", "what's", "show", "list", "collection"]
+        if "name" in query:
+            name_val = str(query["name"]["$regex"]).lower() if isinstance(query["name"], dict) and "$regex" in query["name"] else str(query["name"]).lower()
+            if any(w in name_val for w in bad_words) or name_val.strip() in bad_words:
                 del query["name"]
+        if "description" in query:
+            desc_val = str(query["description"]["$regex"]).lower() if isinstance(query["description"], dict) and "$regex" in query["description"] else str(query["description"]).lower()
+            if any(w in desc_val for w in bad_words) or desc_val.strip() in bad_words:
+                del query["description"]
             
     db = get_mongo_db()
     try:
-        if any(w in user_msg.lower() for w in ["best", "highest", "top", "popular"]):
+        is_best_query = any(w in user_msg.lower() for w in ["best", "popular", "most loved"])
+        is_top_query = any(w in user_msg.lower() for w in ["top", "highest"])
+        
+        if is_best_query:
+            # For 'best' queries, require a minimum of 100 ratings to filter out single-vote 5.0 ratings, then sort by rating & popularity
+            best_query = query.copy()
+            best_query["rating_count"] = {"$gte": 100}
+            cursor = db["fragrances"].find(best_query).sort([("rating_value", -1), ("rating_count", -1)]).limit(3)
+            records = list(cursor)
+            # If no results match the filter threshold, fallback to query without the rating count restriction
+            if not records:
+                cursor = db["fragrances"].find(query).sort([("rating_value", -1), ("rating_count", -1)]).limit(3)
+                records = list(cursor)
+        elif is_top_query:
+            # For 'top rated', sort purely by rating value (direct 5.0s are returned first)
             cursor = db["fragrances"].find(query).sort([("rating_value", -1)]).limit(3)
+            records = list(cursor)
         else:
             cursor = db["fragrances"].find(query).limit(3)
-        records = list(cursor)
+            records = list(cursor)
     except Exception:
         records = []
         
@@ -666,9 +694,9 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
         f"Database Context:\n{context or 'No matching perfumes found in the database.'}\n\n"
         "Guidelines:\n"
         "1. Be extremely enthusiastic, welcoming, and professional.\n"
-        "2. Answer the user's question completely and accurately using the context. Do not make up facts not present in the context.\n"
-        "3. Keep it elegant, luxurious, and conversational (max 5 sentences).\n"
-        "4. Do NOT use markdown symbols like asterisks (*) or hashes (#)."
+        "2. Answer the user's question completely and accurately using the context. You MUST explicitly name the perfumes you are referring to. Do not make up facts not present in the context.\n"
+        "3. Present your answer strictly using a solid circle symbol '●' (not asterisks '*' or hyphens '-') for bullet points (maximum 4 bullet points). Each bullet point must explicitly mention the name of the perfume first (e.g., '● PERFUME_NAME - description'), and be rich, highly detailed, and elegantly descriptive. You MUST add a blank line between each bullet point to keep the response clean, well-spaced, and easy to read.\n"
+        "4. Do NOT use markdown symbols like asterisks (*) or hashes (#) except for the '●' bullet point marker."
     )
     
     messages = [{"role": "system", "content": answer_prompt}]

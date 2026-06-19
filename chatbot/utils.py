@@ -8,15 +8,20 @@ from django.conf import settings
 # 1. Initialize MongoDB Client Connection
 import certifi
 
+_mongo_client = None
+
 def get_mongo_db():
-    # Force use of tlsCAFile using certifi bundle to fix newer OpenSSL 3 handshake issues with Atlas replica sets
-    client = MongoClient(
-        settings.MONGO_URI,
-        tls=True,
-        tlsCAFile=certifi.where(),
-        retryWrites=False
-    )
-    return client[settings.MONGO_DB_NAME]
+    global _mongo_client
+    if _mongo_client is None:
+        # Force use of tlsCAFile using certifi bundle to fix newer OpenSSL 3 handshake issues with Atlas replica sets
+        _mongo_client = MongoClient(
+            settings.MONGO_URI,
+            tls=True,
+            tlsCAFile=certifi.where(),
+            retryWrites=False
+        )
+    return _mongo_client[settings.MONGO_DB_NAME]
+
 
 # 2. CSV Data Handler Script
 def import_csv_to_mongodb():
