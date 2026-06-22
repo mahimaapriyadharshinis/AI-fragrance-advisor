@@ -508,7 +508,8 @@ def generate_pitch_node(state: AgentState) -> Dict[str, Any]:
         f"5. Do NOT invite the user to private viewings, store appointments, or offline services.\n"
         f"6. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
         f"7. Suggest that the user can ask to explore more options or refine their search parameters if they wish.\n"
-        f"8. CRITICAL: Avoid repeating any perfume names or descriptions. Do NOT get stuck in repetition loops listing the same perfumes multiple times."
+        f"8. CRITICAL: Avoid repeating any perfume names or descriptions. Do NOT get stuck in repetition loops listing the same perfumes multiple times.\n"
+        f"9. LANGUAGE RULE: Analyze the user's message. If the user writes in Hindi or Tamil, or explicitly asks for the response to be in Hindi or Tamil, you MUST generate your entire final reply in that requested language. You MUST write in the native script (Devanagari for Hindi 'हिंदी', and Tamil script for Tamil 'தமிழ்'). Do NOT use transliterated English characters (like Hinglish or Tanglish). Preserve all formatting (like '[NEXT_MESSAGE]') exactly."
     )
     
     messages = [{"role": "system", "content": sales_system_prompt}]
@@ -560,7 +561,8 @@ def qa_node(state: AgentState) -> Dict[str, Any]:
         "3. Keep your internal reasoning/thinking extremely concise (under 2 sentences) to prevent cut-offs.\n"
         "4. Do NOT invite the user to private viewings or offline appointments.\n"
         "5. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
-        "6. ONLY suggest complementary notes or accords in square brackets (e.g. [Woody Cedarwood] [Fresh Mint]) if the user is asking general questions about scent notes, matching advice, or styling, and you want to offer them next steps to expand their search. Do NOT provide square bracket suggestions if they are asking 'why' questions about recommended perfumes, comparing perfumes, or asking database Q&A."
+        "6. If suggesting complementary notes or accords, format them simply in square brackets (e.g., [Woody Cedarwood] [Fresh Mint]).\n"
+        "7. LANGUAGE RULE: Analyze the user's message. If the user writes in Hindi or Tamil, or explicitly asks for the response to be in Hindi or Tamil, you MUST generate your entire final reply in that requested language. You MUST write in the native script (Devanagari for Hindi 'हिंदी', and Tamil script for Tamil 'தமிழ்'). Do NOT use transliterated English characters (like Hinglish or Tanglish). Preserve all formatting (like '●' bullet points and blank lines exactly)."
     )
     
     messages = [{"role": "system", "content": qa_system_prompt}]
@@ -639,15 +641,23 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
                 query["gender"] = "for women"
             elif "men" in g_val or "man" in g_val:
                 query["gender"] = "for men"
-        # Clean both name and description from general query or superlative words
-        bad_words = ["top", "best", "highest", "rated", "perfume", "perfumes", "fragrance", "fragrances", "woman", "women", "man", "men", "whats", "what's", "show", "list", "collection"]
+        # Clean both name and description from general query or superlative words ONLY if they consist entirely of query keywords
+        bad_words = {"top", "best", "highest", "rated", "perfume", "perfumes", "fragrance", "fragrances", "woman", "women", "man", "men", "whats", "what's", "show", "list", "collection", "and", "for", "the"}
+        
+        def is_junk_regex(val):
+            import re
+            words = re.findall(r'\b\w+\b', val.lower())
+            if not words:
+                return True
+            return all(w in bad_words for w in words)
+
         if "name" in query:
-            name_val = str(query["name"]["$regex"]).lower() if isinstance(query["name"], dict) and "$regex" in query["name"] else str(query["name"]).lower()
-            if any(w in name_val for w in bad_words) or name_val.strip() in bad_words:
+            name_val = str(query["name"]["$regex"]) if isinstance(query["name"], dict) and "$regex" in query["name"] else str(query["name"])
+            if is_junk_regex(name_val):
                 del query["name"]
         if "description" in query:
-            desc_val = str(query["description"]["$regex"]).lower() if isinstance(query["description"], dict) and "$regex" in query["description"] else str(query["description"]).lower()
-            if any(w in desc_val for w in bad_words) or desc_val.strip() in bad_words:
+            desc_val = str(query["description"]["$regex"]) if isinstance(query["description"], dict) and "$regex" in query["description"] else str(query["description"])
+            if is_junk_regex(desc_val):
                 del query["description"]
             
     db = get_mongo_db()
@@ -696,7 +706,8 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
         "1. Be extremely enthusiastic, welcoming, and professional.\n"
         "2. Answer the user's question completely and accurately using the context. You MUST explicitly name the perfumes you are referring to. Do not make up facts not present in the context.\n"
         "3. Present your answer strictly using a solid circle symbol '●' (not asterisks '*' or hyphens '-') for bullet points (maximum 4 bullet points). Each bullet point must explicitly mention the name of the perfume first (e.g., '● PERFUME_NAME - description'), and be rich, highly detailed, and elegantly descriptive. You MUST add a blank line between each bullet point to keep the response clean, well-spaced, and easy to read.\n"
-        "4. Do NOT use markdown symbols like asterisks (*) or hashes (#) except for the '●' bullet point marker."
+        "4. Do NOT use markdown symbols like asterisks (*) or hashes (#) except for the '●' bullet point marker.\n"
+        "5. LANGUAGE RULE: Analyze the user's message. If the user writes in Hindi or Tamil, or explicitly asks for the response to be in Hindi or Tamil, you MUST generate your entire final reply in that requested language. You MUST write in the native script (Devanagari for Hindi 'हिंदी', and Tamil script for Tamil 'தமிழ்'). Do NOT use transliterated English characters (like Hinglish or Tanglish). Preserve all formatting (like '●' bullet points and blank lines exactly)."
     )
     
     messages = [{"role": "system", "content": answer_prompt}]
