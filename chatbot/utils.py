@@ -71,7 +71,7 @@ def import_csv_to_mongodb():
 # 3. Core Sarvam AI Integration Layer
 import time
 
-def call_sarvam_ai(messages_list):
+def call_sarvam_ai(messages_list, max_tokens=3500):
     """
     Handles request pipelines to the Sarvam Chat Completion endpoint with auto-retry
     """
@@ -85,7 +85,7 @@ def call_sarvam_ai(messages_list):
         "model": "sarvam-30b",
         "messages": messages_list,
         "temperature": 0.4, # Balanced temperature for persuasive and luxurious recommendations
-        "max_tokens": 3500
+        "max_tokens": max_tokens
     }
     
     max_retries = 3
@@ -98,7 +98,10 @@ def call_sarvam_ai(messages_list):
             if response.status_code == 200:
                 content = response.json()['choices'][0]['message']['content']
                 if content is None:
-                    print(f"[ERROR call_sarvam_ai] API returned 200 but content is null. Response: {response.text}")
+                    last_error = "API returned 200 but content is null (likely hit token limit during reasoning)"
+                    print(f"[ERROR call_sarvam_ai] {last_error}. Response: {response.text}")
+                    time.sleep(2 ** attempt)
+                    continue
                 return content
             elif response.status_code in [429, 500, 502, 503, 504]:
                 # Retry on rate limits or temporary server-side errors
