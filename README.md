@@ -1,18 +1,21 @@
 # AI Scent Advisor
 
-The AI Scent Advisor is an interactive, conversational web application designed to guide users in finding their perfect fragrance. Integrating a Django backend with MongoDB and the Sarvam AI large language model, the system facilitates a structured, multi-turn dialogue to determine user preferences before matching and recommending fragrances from a curated catalog.
+The AI Scent Advisor is an interactive, conversational web application designed to guide users in finding their perfect fragrance. Integrating a Django backend with MongoDB and the Sarvam AI large language model using a compiled LangGraph state machine workflow, the system facilitates a structured, multi-turn dialogue to determine user preferences before matching and recommending fragrances from a curated catalog.
 
 ## Features
 
-- **Multi-Turn Conversational Discovery**: Engages users in a structured clarification dialogue (up to 3 turns) to capture detailed scent preferences such as accords, gender categories, and desired aesthetics.
-- **Dynamic Choice Buttons**: Automatically parses option recommendations from the AI's responses and displays them as clickable buttons on the frontend.
-- **Intent Extraction**: Utilizes the Sarvam AI model to parse natural language dialogues into structured database queries.
-- **Database Matching**: Queries a local MongoDB instance to match fragrance characteristics (main accords, gender) against a catalog of nearly 2,000 scents, sorting recommendations by rating value.
-- **Clean Dashboard UI**: Features a modern, split-screen, glassmorphic layout displaying the interactive chat interface on the left and recommended products side-by-side on the right.
+- **State Machine Dialogue Management**: Implements a compiled LangGraph state machine to handle chat routing, intent extraction, database queries, Q&A, and recommendation states dynamically based on conversation turns and user request types.
+- **Dynamic Intent Extraction and Accord Mapping**: Analyzes dialogue transcripts to extract target demographics (gender), brand parameters, and fragrance accords. Maps user-inputted note keywords to broader fragrance categories (e.g. mapping citrus notes to citrus accords) for database matching.
+- **Custom Database Q&A Node**: Supports natural language queries about the fragrance collection. Generates MongoDB query filters dynamically to answer database-specific questions (such as top-rated perfumes, review counts, and comparisons) with support for relaxed regex mapping to bypass database name spacing inconsistencies.
+- **General Fragrance Q&A Node**: Answers general questions about fragrance terminology, sillage, longevity, concentration classifications (such as Eau de Parfum vs. Eau de Toilette), and styling tips using expert knowledge.
+- **Multi-Language Script and Transition Rules**: Detects non-English inputs (such as Hindi or Tamil scripts) and outputs responses in the corresponding script, with automatic switchback to English if the user inputs their next message in English.
+- **Dynamic Prompt-Pill Generation**: Extracts bracketed selection suggestions from the model response text and renders them on the frontend as clickable prompt buttons.
+- **Exception Safety and State Continuity**: Recovers gracefully from model timeouts, network exceptions, or empty reasoning completions without disrupting the session or resetting the user turn counters.
+- **Aesthetic Glassmorphic UI**: Design layout displaying the chat workspace and recommended products side-by-side.
 
 ## Tech Stack
 
-- **Backend**: Python 3.13, Django 6.0, Django REST Framework
+- **Backend**: Python 3.13, Django 6.0, Django REST Framework, LangGraph, PyMongo
 - **Frontend**: HTML5, Vanilla CSS3, Javascript (ES6)
 - **Database**: MongoDB (Atlas/Local)
 - **AI Integrations**: Sarvam AI API (sarvam-30b model)
@@ -23,9 +26,10 @@ The AI Scent Advisor is an interactive, conversational web application designed 
 fragrance_project/
 │
 ├── chatbot/                # Django Application containing core logic
+│   ├── graph.py            # LangGraph workflow state machine, routing, and nodes
 │   ├── urls.py             # API Endpoint Routing
-│   ├── utils.py            # MongoDB helper queries & Sarvam API callers
-│   └── views.py            # Request handlers & Conversational turn managers
+│   ├── utils.py            # MongoDB client connection, CSV data ingestion, and Sarvam API wrapper
+│   └── views.py            # API request handlers wrapping the state graph
 │
 ├── data/                   # Raw fragrance dataset
 │   └── fragrances.csv      # CSV containing perfume details
@@ -77,11 +81,11 @@ fragrance_project/
    ```
 
 5. **Ingest Fragrance Data**:
-   Ensure the database is running and call the ingestion command:
+   Ensure the database is running and start the Django server:
    ```bash
    python manage.py runserver
    ```
-   Submit a POST request to `http://127.0.0.1:8000/api/ingest/` to load the fragrance dataset from `data/fragrances.csv` into MongoDB.
+   Submit an HTTP POST request to `http://127.0.0.1:8000/api/ingest/` to load the fragrance dataset from `data/fragrances.csv` into MongoDB.
 
 ## Running the Application
 
@@ -90,4 +94,5 @@ Start the Django development server:
 python manage.py runserver
 ```
 
-Open a web browser and navigate to `http://127.0.0.1:8000/` to access the application.
+Open a web browser and navigate to `http://127.0.0.1:8000/` to access the application interface.
+
