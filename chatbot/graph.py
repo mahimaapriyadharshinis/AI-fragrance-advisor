@@ -23,6 +23,19 @@ def is_greeting(text: str) -> bool:
     greetings = ["hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening", "yo", "hi there", "hello there"]
     return text.lower().strip() in greetings
 
+def get_language_instruction(user_msg: str) -> str:
+    user_msg_lower = user_msg.lower()
+    if "tamil" in user_msg_lower or "தமிழ்" in user_msg_lower:
+        return "CRITICAL: You MUST write your entire final response in TAMIL script (தமிழ்). Do NOT write any English sentences."
+    if "hindi" in user_msg_lower or "हिंदी" in user_msg_lower:
+        return "CRITICAL: You MUST write your entire final response in HINDI script (हिंदी). Do NOT write any English sentences."
+    # Check unicode ranges for Tamil and Devanagari (Hindi)
+    if any(ord(c) >= 0x0B80 and ord(c) <= 0x0BFF for c in user_msg):
+        return "CRITICAL: You MUST write your entire final response in TAMIL script (தமிழ்). Do NOT write any English sentences."
+    if any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in user_msg):
+        return "CRITICAL: You MUST write your entire final response in HINDI script (हिंदी). Do NOT write any English sentences."
+    return "CRITICAL: You MUST write your entire final response in ENGLISH. Do NOT translate to any other language."
+
 # 2. Helper function to check if a query is unrelated to fragrances
 def is_query_unrelated(text: str) -> bool:
     unrelated_keywords = ["what is google", "whats google", "what is a chocolate", "whats chocolate", "how to code", "write a python script", "solve math"]
@@ -41,10 +54,39 @@ def router_edge(state: AgentState) -> str:
     
     user_msg_lower = user_msg.lower()
     
+    # Check if the user message matches a button option suggestion from the last assistant message
+    messages = state.get("messages") or []
+    is_button_click = False
+    if messages:
+        last_assistant_msg = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "assistant":
+                last_assistant_msg = msg.get("content", "")
+                break
+        if last_assistant_msg:
+            import re
+            options = re.findall(r'\[(.*?)\]', last_assistant_msg)
+            clean_options = [opt.strip().lower() for opt in options]
+            if user_msg_lower.strip() in clean_options:
+                is_button_click = True
+    
     # Fast intercept for new search requests (to avoid LLM misclassification)
     new_search_keywords = ["start over", "new search", "different perfume", "recommend a gift", "gift for my", "new scent"]
     new_search_prefixes = ["i am looking for", "looking for", "i want a", "find me a", "recommend me", "search for", "different perfume", "new scent"]
-    if any(w in user_msg_lower for w in new_search_keywords) or (any(prefix in user_msg_lower for prefix in new_search_prefixes) and (state.get("user_turns", 0) > 0 or has_recommended)):
+    is_new_search = any(w in user_msg_lower for w in new_search_keywords) or (any(prefix in user_msg_lower for prefix in new_search_prefixes) and (state.get("user_turns", 0) > 0 or has_recommended))
+    
+    # Intercept questions about recommendations, explanations of why we recommended a perfume, or fragrance questions
+    qa_keywords = ["why", "explain", "how come", "what notes", "longevity", "how long", "how to apply", "edp", "edt"]
+    is_qa_query = any(k in user_msg_lower for k in qa_keywords)
+    
+    # Fast intercept for note refinement requests (e.g. "i also need", "add lemon", "with mint")
+    refinement_keywords = ["also need", "also want", "add ", "with ", "plus ", "instead of", "too"]
+    is_refinement = any(k in user_msg_lower for k in refinement_keywords)
+    
+    if (is_refinement or is_button_click) and not is_new_search and not is_qa_query:
+        return "recommend"
+        
+    if is_new_search and not is_qa_query:
         return "new_search"
 
     # Fast decline rule to save API calls
@@ -56,9 +98,7 @@ def router_edge(state: AgentState) -> str:
     if any(k in user_msg_lower for k in db_qa_keywords):
         return "database_qa"
 
-    # Intercept questions about recommendations, explanations of why we recommended a perfume, or fragrance questions
-    qa_keywords = ["why", "explain", "how come", "what notes", "longevity", "how long", "how to apply", "edp", "edt"]
-    if any(k in user_msg_lower for k in qa_keywords):
+    if is_qa_query:
         if "recommend" in user_msg_lower or "suggest" in user_msg_lower or any(p.get("name", "").lower() in user_msg_lower for p in recommended):
             return "database_qa"
         return "qa"
@@ -183,21 +223,24 @@ def clarifying_chat_node(state: AgentState) -> Dict[str, Any]:
         "3. Ask exactly ONE relevant clarifying question in simple English to build and refine the user's note profile. "
         "The purpose of your question is to help the user discover and add complementary notes or accords to their preference (e.g., if they selected floral notes, suggest adding fresh citrus, warm vanilla, or earthy woody notes to complement them). "
         "Never conclude the conversation or say you are ready to find a bottle; always ask how to expand or refine their note list. "
-        "At the very end of your response, after your clarifying question is fully complete, provide 2 to 3 complementary suggestion options/accords formatted in square brackets (e.g., [Vanilla & Amber] [Woody Cedarwood]). "
-        "These options MUST be specific scent notes, accords, or ingredients in simple English that are designed to complement and refine their current selection. "
+        "At the very end of your response, after your clarifying question is fully complete, provide 2 to 3 complementary suggestion options/accords formatted in square brackets (e.g., [Vanilla & Musk] [Warm Sandalwood]). "
+        "These options MUST be extremely common, simple, and universally recognizable scent notes or ingredients in simple English (such as Vanilla, Musk, Sandalwood, Rose, Jasmine, Coconut, Lemon, Mint, Lavender, or Orange) that average consumers easily know. Do NOT suggest complicated, niche, or obscure ingredients (like Jasmine Sambac, Petitgrain, Oud, Bergamot, Neroli, or Tonka Bean). "
         "The options must totally relate to the question. "
         "Do NOT write any words, conjunctions, or punctuation between, before, or after the square brackets. "
-        "Example format: 'Would you like to add some fresh citrus brightness or warm woody depth to your rose and jasmine? [Fresh Bergamot & Lime] [Warm Sandalwood & Amber]'\n"
+        "Example format: 'Would you like to add some fresh citrus brightness or warm woody depth to your rose and jasmine? [Fresh Lemon & Lime] [Warm Sandalwood & Amber]'\n"
         "4. NEVER suggest offline actions like store visits. This is purely a digital scent fragrance matcher.\n"
         "5. NEVER use Markdown formatting symbols like asterisks (**) or hashes (###).\n"
         "6. If the user's input is completely unrelated to fragrances, decline politely.\n"
-        "7. LANGUAGE RULE: Analyze the user's LATEST message (the last message in the conversation). If the user's LATEST message is written in a language other than English, or explicitly asks for the response to be in a specific language (such as Hindi or Tamil), you MUST generate your entire final reply in the native script of that requested language. Otherwise, you MUST reply in English. CRITICAL: If the previous turns were in a foreign language (like Hindi), but the user's LATEST message is in English and does not explicitly ask for a translation, you MUST switch back to English immediately. Do NOT continue the conversation in Hindi, Tamil, or any other foreign language unless explicitly asked in the latest message."
+        "7. LANGUAGE RULE: Analyze the user's LATEST message (the last message in the conversation). If the user's LATEST message is written in a language other than English, or explicitly asks for the response to be in a specific language (such as Hindi or Tamil), you MUST generate your entire final reply in the native script of that requested language. Otherwise, you MUST reply in English. CRITICAL: If the previous turns were in a foreign language (like Hindi), but the user's LATEST message is in English and does not explicitly ask for a translation, you MUST switch back to English immediately. Do NOT continue the conversation in Hindi, Tamil, or any other foreign language unless explicitly asked in the latest message.\n"
+        "8. REASONING RULE: Keep your internal reasoning/thinking extremely concise (under 2 sentences) and do not repeat your thoughts or checks. Focus on generating the final output immediately."
     )
     
     messages = [{"role": "system", "content": convo_system_prompt}]
     for msg in (state.get("messages") or []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    messages.append({"role": "user", "content": (state.get("user_message") or "")})
+    user_msg = state.get("user_message") or ""
+    messages.append({"role": "user", "content": user_msg})
+    messages.append({"role": "system", "content": get_language_instruction(user_msg)})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or "Error from Sarvam API" in reply or "Connection Failed" in reply:
@@ -574,19 +617,21 @@ def generate_pitch_node(state: AgentState) -> Dict[str, Any]:
         f"1. LANGUAGE RULE: Analyze the user's LATEST message (the last message in the conversation). If the user's LATEST message is written in a language other than English, or explicitly asks for the response to be in a specific language (such as Hindi or Tamil), you MUST generate your entire final reply in the native script of that requested language. Otherwise, you MUST reply in English. CRITICAL: If the previous turns were in a foreign language (like Hindi), but the user's LATEST message is in English and does not explicitly ask for a translation, you MUST switch back to English immediately. Do NOT continue the conversation in Hindi, Tamil, or any other foreign language unless explicitly asked in the latest message.\n"
         f"2. Response Structure:\n"
         f"   - If the user explicitly asks to compare, contrast, or explain differences between the recommended perfumes in their latest request, write a detailed, luxurious comparison analysis of the Primary Option perfumes (e.g. how their notes differ, who would prefer one over the other, and their unique qualities). Still separate your analysis into distinct, readable paragraphs separated by double newlines.\n"
-        f"   - If the user is asking a specific question about the database data, notes, or descriptions of these perfumes, answer their question accurately and beautifully based on the Scent Catalog Database Context. Structure your answer in distinct, readable paragraphs separated by double newlines.\n"
+        f"   - If the user is asking a specific question about the database data, notes, or descriptions of these perfumes (e.g., 'what rating does this have?'), answer their question accurately and beautifully based on the Scent Catalog Database Context. Structure your answer in distinct, readable paragraphs separated by double newlines. However, if the user's latest message is specifying preferred scent notes (e.g., 'i also want it to smell like...', 'add citrus'), this is NOT a question; you MUST bypass this clause, proceed to the 'Otherwise' clause, and pitch all 3 of the Primary Option perfumes.\n"
         f"   - Otherwise, you MUST pitch all 3 of the Primary Option perfumes: {', '.join(allowed_names)}. You are required to write exactly 3 distinct paragraphs in total (one paragraph for each of the 3 perfumes, in the exact order they are listed). Do NOT skip any of the 3 perfumes, and do NOT write multiple paragraphs for a single perfume. Each of the 3 paragraphs must focus on one perfume, starting with the actual name of that perfume in all caps followed by a colon (e.g., if pitching 'Always 2018 Avonfor women', start with 'ALWAYS 2018 AVONFOR WOMEN: explanation'). Do NOT shorten the names, do NOT omit any part of the name (like brand names or gender suffixes, e.g., 'Armaffor women and men'), and write it exactly as specified. You MUST insert a double newline (\\n\\n) between each of the 3 paragraphs so they render separately. Do NOT mix them into a single paragraph.\n"
         f"3. Keep all paragraphs short, elegant, extremely persuasive, and highly appealing. Keep your internal reasoning/thinking extremely concise (under 2 sentences) so that you do not hit output length limits, and make sure your response is fully complete and does not cut off mid-sentence.\n"
         f"4. Do NOT invite the user to private viewings, store appointments, or offline services.\n"
         f"5. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
         f"6. Suggest that the user can ask to explore more options or refine their search parameters if they wish.\n"
-        f"7. CRITICAL: You MUST write pitches ONLY for the 3 Primary Option perfumes: {', '.join(allowed_names)}. You MUST generate exactly 3 separate paragraphs (one for each perfume). Do NOT skip any of them, combine them, or write multiple paragraphs for a single perfume. Use the EXACT full name of each perfume (e.g., 'PRIVATE KEY TO MY DREAMS ARMAFFOR WOMEN AND MEN') in the paragraph headers. Do NOT edit, truncate, or shorten the name of any perfume. Avoid repeating any perfume names or descriptions. Do NOT get stuck in repetition loops listing the same perfumes multiple times."
+        f"7. CRITICAL: You MUST write pitches ONLY for the 3 Primary Option perfumes: {', '.join(allowed_names)}. You MUST generate exactly 3 separate paragraphs (one for each perfume). Do NOT skip any of them, combine them, or write multiple paragraphs for a single perfume. Use the EXACT full name of each perfume (e.g., 'PRIVATE KEY TO MY DREAMS ARMAFFOR WOMEN AND MEN') in the paragraph headers. Do NOT edit, truncate, or shorten the name of any perfume. Avoid repeating any perfume names or descriptions. Do NOT get stuck in repetition loops listing the same perfumes multiple times. If any of the 3 perfumes do not directly contain the user's latest requested notes (e.g. ocean, sweet, etc.), you MUST still pitch them by explaining how their existing notes (like vanilla, woody, etc.) transition, complement, or contrast beautifully with the newly requested notes."
     )
     
     messages = [{"role": "system", "content": sales_system_prompt}]
     for msg in state.get("messages", []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    messages.append({"role": "user", "content": state.get("user_message", "")})
+    user_msg = state.get("user_message") or ""
+    messages.append({"role": "user", "content": user_msg})
+    messages.append({"role": "system", "content": get_language_instruction(user_msg)})
     
     pitch = call_sarvam_ai(messages)
     
@@ -619,24 +664,28 @@ def qa_node(state: AgentState) -> Dict[str, Any]:
         
     qa_system_prompt = (
         "You are the ultimate luxury AI Scent Advisor. Answer the user's fragrance-related questions accurately and elegantly.\n"
+        "CRITICAL CONFIDENCE RULE: The user is looking at the recommended perfumes in the right-side panel from the very first turn. You are FORBIDDEN from stating, implying, or apologizing that you 'did not recommend' or 'did not suggest' a perfume. Even if this is the first time the perfume is mentioned in the chat text, you MUST take 100% ownership and act as if you explicitly recommended/suggested it. If the user asks why you recommended or suggested it, immediately start explaining its notes and benefits.\n"
         "If they are asking about previously recommended perfumes (such as why a perfume was recommended or explaining a choice), use the provided context to give a clear, specific explanation by explicitly mapping the perfume's actual Main Accords and Description notes to the user's desired preferences. Present this explanation strictly as a neat, luxury-styled list of bullet points (maximum 3 bullet points) where each bullet point starts with the solid circle symbol '●' (do not use asterisks '*' or hyphens '-'), is rich and highly descriptive, and elegantly details how specific accords (like vanilla, woody, etc.) map directly to their request. You MUST add a blank line between each bullet point to ensure they are spaced out nicely and are not grouped close together.\n"
         "If they are asking about previously recommended perfumes, use this context:\n"
         f"{perfumes_str}\n"
-        "If they are asking general questions about scent notes, longevity, perfume application, classifications (e.g., Vetiver, EDP vs EDT), or general styling advice, answer them accurately and beautifully using your expert fragrance knowledge.\n"
         "Guidelines:\n"
         "1. LANGUAGE RULE: Analyze the user's LATEST message (the last message in the conversation). If the user's LATEST message is written in a language other than English, or explicitly asks for the response to be in a specific language (such as Hindi or Tamil), you MUST generate your entire final reply in the native script of that requested language. Otherwise, you MUST reply in English. CRITICAL: If the previous turns were in a foreign language (like Hindi), but the user's LATEST message is in English and does not explicitly ask for a translation, you MUST switch back to English immediately. Do NOT continue the conversation in Hindi, Tamil, or any other foreign language unless explicitly asked in the latest message. Preserve all formatting (like '●' bullet points and blank lines exactly).\n"
         "2. Be extremely enthusiastic, welcoming, and professional.\n"
         "3. Answer the question completely and accurately. Present your response strictly using a solid circle symbol '●' (do not use asterisks '*' or hyphens '-') for bullet points (maximum 3 bullet points) where each bullet point is rich, descriptive, and elegantly detailed. You MUST add a blank line between each bullet point to keep the response clean, well-spaced, and easy to read.\n"
-        "4. Keep your internal reasoning/thinking extremely concise (under 2 sentences) to prevent cut-offs.\n"
-        "5. Do NOT invite the user to private viewings or offline appointments.\n"
-        "6. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
-        "7. If suggesting complementary notes or accords, format them simply in square brackets (e.g., [Woody Cedarwood] [Fresh Mint])."
+        "4. CRITICAL SPECIFICITY RULE: If the user's question is about a specific perfume (or a specific subset of perfumes), you MUST focus your explanation and bullet points ONLY on that specific perfume (or subset), and completely ignore/omit any information or bullet points about the other perfumes they did not ask about.\n"
+        "5. CONFIDENCE RULE: Refer to the CRITICAL CONFIDENCE RULE at the top. You MUST confidently explain why the perfume is perfect for them without ever denying the recommendation.\n"
+        "6. Keep your internal reasoning/thinking extremely concise (under 2 sentences) to prevent cut-offs.\n"
+        "7. Do NOT invite the user to private viewings or offline appointments.\n"
+        "8. Do NOT use markdown symbols like asterisks (**) or hashes (###).\n"
+        "9. Do NOT suggest or include any complementary notes, accords, or options in square brackets (e.g., [Note1] [Note2]) when you are answering questions about previously recommended perfumes or explaining why a perfume was recommended."
     )
     
     messages = [{"role": "system", "content": qa_system_prompt}]
     for msg in state.get("messages", []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    messages.append({"role": "user", "content": state.get("user_message", "")})
+    user_msg = state.get("user_message") or ""
+    messages.append({"role": "user", "content": user_msg})
+    messages.append({"role": "system", "content": get_language_instruction(user_msg)})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -648,57 +697,95 @@ def qa_node(state: AgentState) -> Dict[str, Any]:
 def database_qa_node(state: AgentState) -> Dict[str, Any]:
     """Generates a MongoDB query based on the user's question, runs it, and answers the question using the retrieved data."""
     user_msg = state.get("user_message", "")
-    
-    query_prompt = (
-        "You are an expert MongoDB query generator for a fragrance database.\n"
-        "The collection is named 'fragrances'. The schema is:\n"
-        "- name: string (e.g. 'Junoon Al Haramain Perfumesfor women')\n"
-        "- gender: string ('for women', 'for men', 'for women and men')\n"
-        "- rating_value: float (0.0 to 5.0)\n"
-        "- rating_count: integer\n"
-        "- main_accords: list of strings (e.g. ['powdery', 'rose', 'vanilla'])\n"
-        "- perfumers: list of strings (e.g. ['Christian Carbonnel'])\n"
-        "- description: string (detailed text about notes, nose, year, etc.)\n\n"
-        "Based on the user's question, construct a MongoDB query filter JSON to fetch the relevant documents to answer the question.\n"
-        f"User question: {user_msg}\n"
-        "Guidelines:\n"
-        "- For name, description, or perfumer searches, use case-insensitive regex, e.g. {\"name\": {\"$regex\": \"Hayati\", \"$options\": \"i\"}}\n"
-        "- For comparisons or lookups involving multiple perfumes, you MUST construct an '$or' array matching each perfume name individually using case-insensitive regex, e.g., {\"$or\": [{\"name\": {\"$regex\": \"Wanted Azzaro\", \"$options\": \"i\"}}, {\"name\": {\"$regex\": \"Wanted Freeride\", \"$options\": \"i\"}}]}\n"
-        "- IMPORTANT: Database perfume names contain squished brand and gender suffixes (e.g. 'Avonfor women', 'Spearsfor women', 'Azzarofor men'). When searching by name, keep the regex search query broad by omitting the brand/gender suffixes (e.g. search for 'Hidden Fantasy' or 'Hidden Fantasy.*Spears' instead of the full name 'Hidden Fantasy Britney Spears for women') to prevent lookup failures due to spacing differences.\n"
-        "- If the user explicitly asks for exclusion or negation (e.g. 'without vanilla', 'excluding rose', 'no musk'), use MongoDB negation operators like '$nin' or '$not' with regex, e.g. {\"main_accords\": {\"$nin\": [\"vanilla\"]}} or {\"description\": {\"$not\": {\"$regex\": \"rose\", \"$options\": \"i\"}}}\n"
-        "- Return ONLY the JSON query filter block and absolutely nothing else. Do not wrap in markdown code blocks."
-    )
-    
-    messages = [{"role": "system", "content": query_prompt}]
-    query_raw = call_sarvam_ai(messages)
-    
+    recommended = state.get("recommended_perfumes") or []
+    other = state.get("other_perfumes") or []
+    all_recs = recommended + other
+
+    # 1. Broad substring name matching to intercept and generate query directly (saves LLM call completely)
+    matched_names = []
+    import re
+    user_msg_clean = re.sub(r'[^a-zA-Z0-9\s]', '', user_msg.lower())
+    for p in all_recs:
+        name = p.get("name", "")
+        # Remove brand/gender suffixes to check the core name
+        clean_name = name.lower()
+        for suffix in ["for women and men", "for women", "for men", "avon", "britney spears", "spears", "bdk parfums", "hugo boss", "boss"]:
+            clean_name = clean_name.replace(suffix, "")
+        clean_name = re.sub(r'[^a-zA-Z0-9\s]', '', clean_name).strip()
+        # Check if the core name is a substring in the user message
+        if len(clean_name) > 3 and clean_name in user_msg_clean:
+            matched_names.append(name)
+
     query = {}
-    try:
-        clean_json = query_raw.strip()
-        if "```" in clean_json:
-            clean_json = clean_json.split("```")[1]
-            if clean_json.startswith("json"):
-                clean_json = clean_json[4:]
-        query = json.loads(clean_json.strip())
-    except Exception:
-        # Fallback keyword and gender extraction if LLM fails or returns invalid/null JSON
-        query = {}
-        msg_lower = user_msg.lower()
-        if "women and men" in msg_lower or "unisex" in msg_lower or "both" in msg_lower:
-            query["gender"] = "for women and men"
-        elif "women" in msg_lower or "woman" in msg_lower:
-            query["gender"] = "for women"
-        elif "men" in msg_lower or "man" in msg_lower:
-            query["gender"] = "for men"
-            
-        stop_words = {"compare", "notes", "give", "best", "these", "women", "woman", "mens", "perfume", "perfumes", "fragrance", "fragrances", "select", "rating", "rated", "highest", "which", "would", "what", "about", "detail", "details", "for", "whats", "what's", "tell", "show", "list", "find", "search", "some", "top", "most", "popular"}
-        keywords = [w.strip("?,.!:;\"'") for w in user_msg.split() if len(w) > 3 and w.lower().strip("?,.!:;\"'") not in stop_words]
-        if keywords:
-            regex_str = "|".join(keywords)
-            query["$or"] = [
-                {"name": {"$regex": regex_str, "$options": "i"}},
-                {"description": {"$regex": regex_str, "$options": "i"}}
-            ]
+    if matched_names:
+        # Construct an $or query for matched name regexes
+        regex_patterns = []
+        for name in matched_names:
+            # Strip suffixes to make it broad
+            core_name = name.lower()
+            for suffix in ["for women and men", "for women", "for men"]:
+                core_name = core_name.replace(suffix, "")
+            core_name = core_name.strip()
+            # Escape words and join with .*
+            words = [re.escape(w) for w in core_name.split() if w.strip()]
+            if words:
+                regex_patterns.append({"name": {"$regex": ".*".join(words), "$options": "i"}})
+        if len(regex_patterns) == 1:
+            query = regex_patterns[0]
+        elif len(regex_patterns) > 1:
+            query = {"$or": regex_patterns}
+
+    # If direct extraction didn't yield a query, call LLM to generate it with small max_tokens
+    if not query:
+        query_prompt = (
+            "You are an expert MongoDB query generator for a fragrance database.\n"
+            "The collection is named 'fragrances'. The schema is:\n"
+            "- name: string (e.g. 'Junoon Al Haramain Perfumesfor women')\n"
+            "- gender: string ('for women', 'for men', 'for women and men')\n"
+            "- rating_value: float (0.0 to 5.0)\n"
+            "- rating_count: integer\n"
+            "- main_accords: list of strings (e.g. ['powdery', 'rose', 'vanilla'])\n"
+            "- perfumers: list of strings (e.g. ['Christian Carbonnel'])\n"
+            "- description: string (detailed text about notes, nose, year, etc.)\n\n"
+            "Based on the user's question, construct a MongoDB query filter JSON to fetch the relevant documents to answer the question.\n"
+            f"User question: {user_msg}\n"
+            "Guidelines:\n"
+            "- For name, description, or perfumer searches, use case-insensitive regex, e.g. {\"name\": {\"$regex\": \"Hayati\", \"$options\": \"i\"}}\n"
+            "- For comparisons or lookups involving multiple perfumes, you MUST construct an '$or' array matching each perfume name individually using case-insensitive regex, e.g., {\"$or\": [{\"name\": {\"$regex\": \"Wanted Azzaro\", \"$options\": \"i\"}}, {\"name\": {\"$regex\": \"Wanted Freeride\", \"$options\": \"i\"}}]}\n"
+            "- IMPORTANT: Database perfume names contain squished brand and gender suffixes (e.g. 'Avonfor women', 'Spearsfor women', 'Azzarofor men'). When searching by name, keep the regex search query broad by omitting the brand/gender suffixes (e.g. search for 'Hidden Fantasy' or 'Hidden Fantasy.*Spears' instead of the full name 'Hidden Fantasy Britney Spears for women') to prevent lookup failures due to spacing differences.\n"
+            "- If the user explicitly asks for exclusion or negation (e.g. 'without vanilla', 'excluding rose', 'no musk'), use MongoDB negation operators like '$nin' or '$not' with regex, e.g. {\"main_accords\": {\"$nin\": [\"vanilla\"]}} or {\"description\": {\"$not\": {\"$regex\": \"rose\", \"$options\": \"i\"}}}\n"
+            "- Return ONLY the JSON query filter block and absolutely nothing else. Do not wrap in markdown code blocks."
+        )
+        
+        messages = [{"role": "system", "content": query_prompt}]
+        query_raw = call_sarvam_ai(messages, max_tokens=150)
+        
+        try:
+            clean_json = query_raw.strip()
+            if "```" in clean_json:
+                clean_json = clean_json.split("```")[1]
+                if clean_json.startswith("json"):
+                    clean_json = clean_json[4:]
+            query = json.loads(clean_json.strip())
+        except Exception:
+            # Fallback keyword and gender extraction if LLM fails or returns invalid/null JSON
+            query = {}
+            msg_lower = user_msg.lower()
+            if "women and men" in msg_lower or "unisex" in msg_lower or "both" in msg_lower:
+                query["gender"] = "for women and men"
+            elif "women" in msg_lower or "woman" in msg_lower:
+                query["gender"] = "for women"
+            elif "men" in msg_lower or "man" in msg_lower:
+                query["gender"] = "for men"
+                
+            stop_words = {"compare", "notes", "give", "best", "these", "women", "woman", "mens", "perfume", "perfumes", "fragrance", "fragrances", "select", "rating", "rated", "highest", "which", "would", "what", "about", "detail", "details", "for", "whats", "what's", "tell", "show", "list", "find", "search", "some", "top", "most", "popular"}
+            keywords = [w.strip("?,.!:;\"'") for w in user_msg.split() if len(w) > 3 and w.lower().strip("?,.!:;\"'") not in stop_words]
+            if keywords:
+                regex_str = "|".join(keywords)
+                query["$or"] = [
+                    {"name": {"$regex": regex_str, "$options": "i"}},
+                    {"description": {"$regex": regex_str, "$options": "i"}}
+                ]
             
     # Clean and sanitize the query parameters to match MongoDB exactly
     print(f"[DEBUG database_qa_node] Generated raw query: {query}")
@@ -755,6 +842,14 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
     except Exception:
         records = []
         
+    if not records:
+        reply = (
+            f"I couldn't find any perfumes matching '{user_msg}' in our database. "
+            "However, I would be delighted to search for fragrances featuring these notes for you! "
+            "Please let me know if you would like me to add them to your scent profile."
+        )
+        return {"bot_reply": reply}
+        
     context = ""
     for r in records:
         desc = r.get('description', '')
@@ -771,19 +866,24 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
         
     answer_prompt = (
         "You are the ultimate luxury AI Scent Advisor. Answer the user's question accurately and elegantly based on the provided database context.\n"
+        "CRITICAL CONFIDENCE RULE: The user is looking at the recommended perfumes in the right-side panel from the very first turn. You are FORBIDDEN from stating, implying, or apologizing that you 'did not recommend' or 'did not suggest' a perfume. Even if this is the first time the perfume is mentioned in the chat text, you MUST take 100% ownership and act as if you explicitly recommended/suggested it. If the user asks why you recommended or suggested it, immediately start explaining its notes and benefits.\n"
         f"Database Context:\n{context or 'No matching perfumes found in the database.'}\n\n"
         "Guidelines:\n"
         "1. LANGUAGE RULE: Analyze the user's LATEST message (the last message in the conversation). If the user's LATEST message is written in a language other than English, or explicitly asks for the response to be in a specific language (such as Hindi or Tamil), you MUST generate your entire final reply in the native script of that requested language. Otherwise, you MUST reply in English. CRITICAL: If the previous turns were in a foreign language (like Hindi), but the user's LATEST message is in English and does not explicitly ask for a translation, you MUST switch back to English immediately. Do NOT continue the conversation in Hindi, Tamil, or any other foreign language unless explicitly asked in the latest message. Preserve all formatting (like '●' bullet points and blank lines exactly).\n"
         "2. Be extremely enthusiastic, welcoming, and professional.\n"
-        "3. Answer the user's question completely and accurately using the context. You MUST explicitly name the perfumes you are referring to. Do not make up facts not present in the context.\n"
-        "4. Present your answer strictly using a solid circle symbol '●' (not asterisks '*' or hyphens '-') for bullet points (maximum 4 bullet points). Each bullet point must explicitly mention the name of the perfume first (e.g., '● PERFUME_NAME - description'), and be rich, highly detailed, and elegantly descriptive. You MUST add a blank line between each bullet point to keep the response clean, well-spaced, and easy to read.\n"
-        "5. Do NOT use markdown symbols like asterisks (*) or hashes (#) except for the '●' bullet point marker."
+        "3. CONFIDENCE RULE: Refer to the CRITICAL CONFIDENCE RULE at the top. You MUST confidently explain why the perfume is perfect for them without ever denying the recommendation.\n"
+        "4. Answer the user's question completely and accurately using the context. You MUST explicitly name the perfumes you are referring to. Do not make up facts not present in the context.\n"
+        "5. CRITICAL SPECIFICITY RULE: If the user's question is about a specific perfume (or a specific subset of perfumes), you MUST focus your explanation and bullet points ONLY on that specific perfume (or subset), and completely ignore/omit any information or bullet points about the other perfumes.\n"
+        "6. Present your answer strictly using a solid circle symbol '●' (not asterisks '*' or hyphens '-') for bullet points (maximum 4 bullet points). Each bullet point must explicitly mention the name of the perfume first (e.g., '● PERFUME_NAME - description'), and be rich, highly detailed, and elegantly descriptive. You MUST add a blank line between each bullet point to keep the response clean, well-spaced, and easy to read.\n"
+        "7. Do NOT use markdown symbols like asterisks (*) or hashes (#) except for the '●' bullet point marker.\n"
+        "8. Do NOT suggest or include any complementary notes, accords, or options in square brackets (e.g., [Note1] [Note2]) under any circumstances."
     )
     
     messages = [{"role": "system", "content": answer_prompt}]
     for msg in state.get("messages", []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     messages.append({"role": "user", "content": user_msg})
+    messages.append({"role": "system", "content": get_language_instruction(user_msg)})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -808,12 +908,8 @@ def new_search_node(state: AgentState) -> Dict[str, Any]:
 
 
 def post_query_router(state: AgentState) -> str:
-    """Routes to generate_pitch if we have met conversational turns threshold or are refining, otherwise routes to clarifying chat."""
-    user_msg = (state.get("user_message") or "").lower()
-    recommended = state.get("recommended_perfumes") or []
-    has_recommended = len(recommended) > 0
-    is_refining = has_recommended and ("add " in user_msg or "with " in user_msg or "change " in user_msg or "instead " in user_msg or "dislike" in user_msg or "don't like" in user_msg or "do not like" in user_msg)
-    if state.get("user_turns", 0) >= 2 or is_refining:
+    """Routes to generate_pitch if we have met conversational turns threshold, otherwise routes to clarifying chat."""
+    if state.get("user_turns", 0) >= 2:
         return "pitch"
     return "chat"
 
