@@ -229,8 +229,13 @@ def clarifying_chat_node(state: AgentState) -> Dict[str, Any]:
     for msg in (state.get("messages") or []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     user_msg = state.get("user_message") or ""
-    messages.append({"role": "user", "content": user_msg})
-    messages.append({"role": "system", "content": get_language_instruction(user_msg, state.get("requested_language"))})
+    lang = state.get("requested_language")
+    user_content = user_msg
+    if lang and lang.strip().lower() not in ["english", "eng"]:
+        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
+    else:
+        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
+    messages.append({"role": "user", "content": user_content})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or "Error from Sarvam API" in reply or "Connection Failed" in reply:
@@ -743,8 +748,13 @@ def generate_pitch_node(state: AgentState) -> Dict[str, Any]:
     for msg in state.get("messages", []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     user_msg = state.get("user_message") or ""
-    messages.append({"role": "user", "content": user_msg})
-    messages.append({"role": "system", "content": get_language_instruction(user_msg, state.get("requested_language"))})
+    lang = state.get("requested_language")
+    user_content = user_msg
+    if lang and lang.strip().lower() not in ["english", "eng"]:
+        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
+    else:
+        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
+    messages.append({"role": "user", "content": user_content})
     
     pitch = call_sarvam_ai(messages)
     
@@ -845,8 +855,13 @@ def qa_node(state: AgentState) -> Dict[str, Any]:
     for msg in state.get("messages", []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     user_msg = state.get("user_message") or ""
-    messages.append({"role": "user", "content": user_msg})
-    messages.append({"role": "system", "content": get_language_instruction(user_msg, state.get("requested_language"))})
+    lang = state.get("requested_language")
+    user_content = user_msg
+    if lang and lang.strip().lower() not in ["english", "eng"]:
+        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
+    else:
+        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
+    messages.append({"role": "user", "content": user_content})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -895,8 +910,14 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
         messages = [{"role": "system", "content": answer_prompt}]
         for msg in state.get("messages", []):
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-        messages.append({"role": "user", "content": user_msg})
-        messages.append({"role": "system", "content": get_language_instruction(user_msg, state.get("requested_language"))})
+        user_msg = state.get("user_message") or ""
+        lang = state.get("requested_language")
+        user_content = user_msg
+        if lang and lang.strip().lower() not in ["english", "eng"]:
+            user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
+        else:
+            user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
+        messages.append({"role": "user", "content": user_content})
         
         reply = call_sarvam_ai(messages)
         if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -1092,8 +1113,14 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
     messages = [{"role": "system", "content": answer_prompt}]
     for msg in state.get("messages", []):
         messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    messages.append({"role": "user", "content": user_msg})
-    messages.append({"role": "system", "content": get_language_instruction(user_msg)})
+    user_msg = state.get("user_message") or ""
+    lang = state.get("requested_language")
+    user_content = user_msg
+    if lang and lang.strip().lower() not in ["english", "eng"]:
+        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
+    else:
+        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
+    messages.append({"role": "user", "content": user_content})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
