@@ -5,57 +5,71 @@
   <img src="static/title_banner.gif" alt="AI Scent Advisor Pixel Title Banner" width="100%">
 </p>
 
-# AI Scent Advisor
+<h1 align="center" style="color: #2C1E38; font-family: monospace;">AI Scent Advisor</h1>
 
-An enterprise-grade, state-managed conversational recommendation system that guides users to their perfect fragrance using LangGraph state machines, MongoDB, and the Sarvam AI large language model.
+<p align="center" style="color: #504B5A; font-family: monospace; font-size: 1.1em;">
+  An enterprise-grade, state-managed conversational recommendation system that guides users to their perfect fragrance using LangGraph state machines, MongoDB, and the Sarvam AI large language model.
+</p>
 
----
+<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
 
-## Conversational System Overview
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Conversational System Overview</h2>
 
-The AI Scent Advisor is an interactive, multi-turn conversational web application designed to narrow down user preferences for fragrances. Built with a Django backend and MongoDB Atlas, it implements a compiled state machine workflow via LangGraph to route dialogue turns, extract accords, query the product database, handle general scent queries, and format matching recommendations.
+<blockquote style="border-left: 4px solid #F7C8E0; background-color: #FAF7F5; padding: 12px 18px; margin: 15px 0; color: #504B5A; font-family: monospace;">
+  The AI Scent Advisor is an interactive, multi-turn conversational web application designed to narrow down user preferences for fragrances. Built with a Django backend and MongoDB Atlas, it implements a compiled state machine workflow via LangGraph to route dialogue turns, extract accords, query the product database, handle general scent queries, and format matching recommendations.
+</blockquote>
 
----
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Olfactory Navigation Challenges</h2>
 
-## Olfactory Navigation Challenges
+<div style="background-color: #FAF7F5; border: 1px solid #D8B4F8; padding: 15px; border-radius: 4px; color: #504B5A; font-family: monospace;">
+  Navigating the world of perfumery is overwhelming due to thousands of choices and complex olfactory terminology (e.g., sillage, dry-down, base notes). Users frequently struggle to find fragrances because:
+  <ul>
+    <li>Search engines rely on exact keyword matches rather than semantic scent preferences.</li>
+    <li>Off-the-shelf LLMs lack real-time catalog access, leading to hallucinations of non-existent or discontinued perfumes.</li>
+    <li>Conversational context easily drifts or breaks during complex, multi-turn queries.</li>
+  </ul>
+</div>
 
-Navigating the world of perfumery is overwhelming due to thousands of choices and complex olfactory terminology (e.g., sillage, dry-down, base notes). Users frequently struggle to find fragrances because:
-- Search engines rely on exact keyword matches rather than semantic scent preferences.
-- Off-the-shelf LLMs lack real-time catalog access, leading to hallucinations of non-existent or discontinued perfumes.
-- Conversational context easily drifts or breaks during complex, multi-turn queries.
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Advisor Objectives</h2>
 
----
+<div style="background-color: #FAF7F5; border: 1px solid #F7C8E0; padding: 15px; border-radius: 4px; color: #504B5A; font-family: monospace; margin-top: 15px;">
+  <ul>
+    <li>Design a structured state-machine dialog tree to handle user interactions without losing track of current filters (gender, brand, disliked ingredients).</li>
+    <li>Implement a semantic accord-mapping translator that maps simple terms (e.g., orange, lemon) to standardized accords (e.g., Citrus).</li>
+    <li>Develop a database query interface translating natural language requests into complex MongoDB parameters.</li>
+    <li>Provide a robust exception-handling layer ensuring context continuity during LLM timeouts or network disruptions.</li>
+  </ul>
+</div>
 
-## Advisor Objectives
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Core System Features</h2>
 
-- Design a structured state-machine dialog tree to handle user interactions without losing track of current filters (gender, brand, disliked ingredients).
-- Implement a semantic accord-mapping translator that maps simple terms (e.g., orange, lemon) to standardized accords (e.g., Citrus).
-- Develop a database query interface translating natural language requests into complex MongoDB parameters.
-- Provide a robust exception-handling layer ensuring context continuity during LLM timeouts or network disruptions.
+<div style="color: #504B5A; font-family: monospace; margin: 15px 0;">
+  <ul>
+    <li><strong>LangGraph State Orchestration</strong>: Structured routing via compiled state transitions.</li>
+    <li><strong>Dynamic Accord Ingestion</strong>: Auto-translates custom inputs to catalog categories.</li>
+    <li><strong>Resilient Fallback Middleware</strong>: Preserves turn counters and state variables if model services fail.</li>
+    <li><strong>Multilingual Localization</strong>: Detects regional scripts (Tamil, Hindi) and switches UI text automatically.</li>
+    <li><strong>Interactive Prompt-Pills</strong>: Auto-extracts bracketed keywords from text and displays them as clickable buttons.</li>
+    <li><strong>Side-by-Side Glassmorphic Workspace</strong>: Split layout for conversational chat and matching catalog products.</li>
+  </ul>
+</div>
 
----
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Olfactory Tech Stack</h2>
 
-## Core System Features
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.13-2C1E38?style=flat-square&labelColor=D8B4F8" alt="Python">
+  <img src="https://img.shields.io/badge/Django-6.0-2C1E38?style=flat-square&labelColor=F7C8E0" alt="Django">
+  <img src="https://img.shields.io/badge/DRF-API-2C1E38?style=flat-square&labelColor=D8B4F8" alt="DRF">
+  <img src="https://img.shields.io/badge/LangGraph-Orchestration-2C1E38?style=flat-square&labelColor=F7C8E0" alt="LangGraph">
+  <img src="https://img.shields.io/badge/Sarvam_AI-LLM-2C1E38?style=flat-square&labelColor=D8B4F8" alt="Sarvam AI">
+  <img src="https://img.shields.io/badge/MongoDB-Atlas-2C1E38?style=flat-square&labelColor=F7C8E0" alt="MongoDB">
+  <br>
+  <img src="https://img.shields.io/badge/HTML5-Structure-2C1E38?style=flat-square&labelColor=D8B4F8" alt="HTML5">
+  <img src="https://img.shields.io/badge/CSS3-Style-2C1E38?style=flat-square&labelColor=F7C8E0" alt="CSS3">
+  <img src="https://img.shields.io/badge/JavaScript-ES6-2C1E38?style=flat-square&labelColor=D8B4F8" alt="JavaScript">
+</p>
 
-- **LangGraph State Orchestration**: Structured routing via compiled state transitions.
-- **Dynamic Accord Ingestion**: Auto-translates custom inputs to catalog categories.
-- **Resilient Fallback Middleware**: Preserves turn counters and state variables if model services fail.
-- **Multilingual Localization**: Detects regional scripts (Tamil, Hindi) and switches UI text automatically.
-- **Interactive Prompt-Pills**: Auto-extracts bracketed keywords from text and displays them as clickable buttons.
-- **Side-by-Side Glassmorphic Workspace**: Split layout for conversational chat and matching catalog products.
-
----
-
-## Olfactory Tech Stack
-
-- **Backend**: Python 3.13, Django 6.0, Django REST Framework, LangGraph, PyMongo
-- **Frontend**: HTML5, Vanilla CSS3 (Custom Variables), JavaScript (ES6)
-- **Database**: MongoDB (Local Instance / Atlas Cloud)
-- **AI Integrations**: Sarvam AI API (Sarvam-30b model adapter)
-
----
-
-## Graph Architecture & State Routing
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Graph Architecture & State Routing</h2>
 
 ```mermaid
 graph TD
@@ -76,9 +90,7 @@ graph TD
     GeneralQANode --> EndNode
 ```
 
----
-
-## Repository Layout
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Repository Layout</h2>
 
 ```text
 fragrance_project/
@@ -93,8 +105,8 @@ fragrance_project/
 │   ├── settings.py             # Security, static files, and application definitions
 │   └── urls.py                 # Main URL router mapping view assets
 ├── static/                     # Assets assets
-│   ├── pixel_banner.png        # Header retro visual banner
-│   ├── title_banner.png        # Header title gradient banner
+│   ├── pixel_banner.gif        # Header retro visual banner
+│   ├── title_banner.gif        # Header title gradient banner
 │   ├── css/index.css           # Glassmorphic visual stylesheet
 │   └── js/index.js             # Async communication interface
 ├── templates/                  # Base document markups
@@ -103,9 +115,7 @@ fragrance_project/
 └── requirements.txt            # System dependencies manifest
 ```
 
----
-
-## System Deployment Guide
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">System Deployment Guide</h2>
 
 ### Setup Prerequisites
 
@@ -144,9 +154,7 @@ SARVAM_API_KEY=your_sarvam_api_key_here
    ```
    Execute a HTTP POST request targeting `/api/ingest/` (using Postman or curl) to parse and load `data/fragrances.csv` into MongoDB.
 
----
-
-## Ingestion & Dialogue Execution
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Ingestion & Dialogue Execution</h2>
 
 1. Start the Django backend server:
    ```bash
@@ -155,9 +163,7 @@ SARVAM_API_KEY=your_sarvam_api_key_here
 2. Navigate to `http://127.0.0.1:8000/` in a web browser.
 3. Chat with the Scent Advisor to refine your choices. You can click on the dynamic prompt pills (bracketed suggestions) to choose pre-configured paths, or type raw messages detailing the brands and scent notes you prefer or dislike.
 
----
-
-## Conversational API Reference
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Conversational API Reference</h2>
 
 ### Chatbot Dialogue Endpoint
 
@@ -196,9 +202,7 @@ SARVAM_API_KEY=your_sarvam_api_key_here
   }
   ```
 
----
-
-## MongoDB Document Schema & Data Pipelines
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">MongoDB Document Schema & Data Pipelines</h2>
 
 Fragrance entities are stored inside the `fragrances` collection within MongoDB.
 
@@ -222,9 +226,7 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB.
 5. Search results are filtered to exclude items in `disliked_perfumes`.
 6. Recommended matches are set in the state, and the response is serialized back to the frontend.
 
----
-
-## LangGraph Workflow & Sarvam AI Model Configuration
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">LangGraph Workflow & Sarvam AI Model Configuration</h2>
 
 - **Core Model**: Sarvam AI API (Sarvam-30b model wrapper).
 - **Orchestration**: LangGraph StateGraph compiling nodes into a structured workflow:
@@ -235,33 +237,27 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB.
   - `db_qa`: Parses natural-language questions about catalog data and rating metrics.
   - `general_qa`: Resolves terminology and general scent classification concerns.
 
----
-
-## Sample Dialogue Scenarios
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Sample Dialogue Scenarios</h2>
 
 - **Input**: "I hate sweet fragrances and want something fresh."
 - **State Updated**: `disliked_perfumes` appended with "sweet".
 - **Output**: "No problem! I have excluded sweet fragrances from your advisor search. How about a fresh wood or green tea scent?"
 
----
-
-## Benchmark Performance
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Benchmark Performance</h2>
 
 - **Context Retention**: Maintains user preferences up to 8 conversation turns without losing tracking variables.
 - **Latency**: Under 1.5 seconds average latency per conversational cycle utilizing Sarvam AI streaming endpoints.
 
----
-
-## Project Acknowledgements
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Project Acknowledgements</h2>
 
 - Sarvam AI Team for model API support.
 - LangGraph developers for state-management frameworks.
 
----
-
-## Project License
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Project License</h2>
 
 This project is licensed under the MIT License - see the `LICENSE` file for details.
+
+
 
 
 
