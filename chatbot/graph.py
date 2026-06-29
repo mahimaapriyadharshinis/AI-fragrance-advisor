@@ -83,7 +83,17 @@ def router_edge(state: AgentState) -> str:
     if any(k in user_msg_lower for k in refine_keywords) or user_msg_lower.startswith("and "):
         return "recommend"
 
-    # 6. Use LLM to classify the semantic intent of the query
+    # 6. Extract recent conversation history for classification context
+    history_context = ""
+    history_messages = state.get("messages") or []
+    if history_messages:
+        history_context = "Recent Conversation History:\n"
+        for m in history_messages[-3:]:
+            role = "User" if m.get("role") == "user" else "Assistant"
+            history_context += f"{role}: {m.get('content')}\n"
+        history_context += "\n"
+
+    # 7. Use LLM to classify the semantic intent of the query
     classify_prompt = (
         "You are a routing supervisor. Your job is to classify the user's latest message intent into one of five categories:\n"
         "- 'decline': The query is completely off-topic (unrelated to perfumes, fragrances, scent notes, smelling, or cosmetic styling).\n"
@@ -91,6 +101,7 @@ def router_edge(state: AgentState) -> str:
         "- 'database_qa': The user is asking a specific question about the database, ratings, perfumers, comparing specific perfumes, requesting info/listings, or asking for the 'best', 'highest rated', or 'most popular' perfumes (e.g., 'whats the best perfume for women', 'compare Junoon and Hayati', 'which is the highest rated?', 'what notes are in Hayati?', 'do you have perfumes by Christian Carbonnel?'). CRITICAL: If the user is asking WHY a perfume was recommended, comparing recommended perfumes, or asking questions about a recommended perfume, classify it as 'database_qa'. Do NOT classify it as 'recommend'.\n"
         "- 'qa': General questions about perfume terms (EDP vs EDT), longevity, application, how to use scent, or general advice.\n"
         "- 'recommend': The user is looking for perfume suggestions or recommendations based on taste, style, or occasion (e.g., 'recommend me a perfume for the office', 'find my signature scent'), OR refining active recommendations (e.g. 'add vanilla', 'instead of that', 'add jasmine and rose').\n\n"
+        f"{history_context}"
         f"User Message: {user_msg}\n"
         "Respond with ONLY the category name ('decline', 'new_search', 'database_qa', 'qa', or 'recommend') and absolutely nothing else."
     )
@@ -187,7 +198,7 @@ def clarifying_chat_node(state: AgentState) -> Dict[str, Any]:
         "Your tone must be vibrant, welcoming, and highly persuasive—implicitly steering the customer to feel excited and ready to make a purchase.\n\n"
         "# Core Guidelines\n"
         "- Be elegant, passionate, concise, and helpful.\n"
-        "- Keep answers short, delightful, and highly positive (maximum 3 sentences per reply). Show genuine excitement to find their perfect match.\n"
+        "- Keep answers extremely short, delightful, and highly positive (strictly maximum 2-3 sentences total). Do NOT write long essays, descriptions of note combinations, or fragrance layering explanations.\n"
         "- NEVER suggest offline actions like store visits. This is purely a digital scent fragrance matcher.\n"
         "- NEVER use Markdown formatting symbols like asterisks (**) or hashes (###).\n"
         "- If the user's input is completely unrelated to fragrances, decline politely.\n\n"
@@ -248,7 +259,7 @@ def extract_intent_node(state: AgentState) -> Dict[str, Any]:
         "   - Once established, do not change it unless the user explicitly asks for a different gender. Do not let assistant messages override this selection.\n"
         "2. Accords: Extract ALL scent notes, accords, ingredients, and vibes that the user explicitly requested, selected, or wanted to include in their perfume preference across the entire conversation. Return them as a flat list. CRITICAL: Do NOT extract notes that were only mentioned as part of Q&A questions or informational requests (e.g., if the user asked 'whats vetiver' or 'what is oud', do NOT extract 'vetiver' or 'oud' unless they explicitly requested to add it to their preference). Correct spelling typos (e.g. 'carmel' -> 'caramel', 'cardomom' -> 'cardamom', 'jasmin' -> 'jasmine', 'bergamont' -> 'bergamot').\n"
         "3. Refined notes: Scent notes the user explicitly asked to ADD or focus on in their LATEST message. If none, return []. Correct spelling typos.\n"
-        "4. Brand: Specific perfume brand EXPLICITLY requested by the user in their latest message (e.g. 'show me Chanel perfumes', 'Bvlgari brand'). Do NOT extract a brand name if it was only mentioned as part of a recommended perfume name or an assistant pitch in the chat history. If no brand is explicitly requested in the user's latest query, return null.\n"
+        "4. Brand: Specific perfume brand EXPLICITLY requested by the user to filter their search (e.g. 'show me Chanel perfumes', 'Bvlgari brand'). Do NOT extract a brand name if it was only mentioned in a recommended perfume name, assistant pitch, or in a question about a specific perfume (e.g. 'what makes Patchouli Indulgence Avon good'). If no brand filter is explicitly requested by the user to filter their search, return null.\n"
         "5. Disliked: Perfume names the user explicitly rejected or dislikes. If none, return [].\n"
         "6. Sort: true if user wants 'best', 'highest rated', 'top rated', or 'most popular'. Otherwise, false.\n"
         "Respond with ONLY a JSON block: {\"gender\": \"for women\"|\"for men\"|\"for women and men\", \"accords\": [\"tag1\", \"tag2\"], \"refined_notes\": [\"note1\"], \"brand\": \"brand_name\"|null, \"disliked\": [\"name1\"], \"sort_by_best\": true|false}. No code blocks, markdown tags, or explanations."
@@ -1107,37 +1118,25 @@ def new_search_node(state: AgentState) -> Dict[str, Any]:
 
 
 def post_query_router(state: AgentState) -> str:
-    """Semantically analyzes the user's conversation to route to either 'pitch' or 'chat'."""
-    # Force note refinement on Turn 1 and Turn 2 (refines until Turn 3)
-    if state.get("user_turns", 0) < 2:
-        return "chat"
-        
-    user_msg = state.get("user_message") or ""
-    accords = state.get("accords_list", [])
-    
-    classify_prompt = (
-        "You are a conversation routing supervisor. Your task is to semantically analyze the user's latest message and conversation state, "
-        "and decide the next logical step. Choose between:\n"
-        "- 'pitch': The user has specified concrete scent notes (e.g. vanilla, rose, musk, sandalwood) or is refining their search with specific ingredients, "
-        "and is ready to receive matching perfume recommendations and explanations from the database.\n"
-        "- 'chat': The user's preferences are still vague, general, or occasion-only (e.g. 'elegant scent', 'for the office', 'something for a grand party'), "
-        "and we need to ask a clarifying question to find out what scent notes, accords, or ingredients they prefer.\n\n"
-        "Conversation Context:\n"
-        f"- Extracted Accords List: {accords}\n"
-        f"- Latest User Message: '{user_msg}'\n\n"
-        "Respond with ONLY the classification word ('pitch' or 'chat') and absolutely nothing else."
-    )
-    
-    messages = [{"role": "system", "content": classify_prompt}]
-    choice = call_sarvam_ai(messages)
-    if choice and isinstance(choice, str):
-        clean_choice = choice.strip().lower()
-        if "pitch" in clean_choice:
-            return "pitch"
-        elif "chat" in clean_choice:
-            return "chat"
+    """Routes to generate_pitch if we have met conversational turns threshold, otherwise routes to clarifying chat."""
+    search_turns = 0
+    for msg in state.get("messages", []):
+        if msg.get("role") == "user":
+            content = msg.get("content", "").lower()
+            if is_greeting(content):
+                continue
+            is_qa = any(x in content for x in ["why did you recommend", "why recommend", "compare", "what makes", "what is", "difference", "how long"])
+            if not is_qa:
+                search_turns += 1
+                
+    current_msg = (state.get("user_message") or "").lower()
+    if not is_greeting(current_msg):
+        is_qa = any(x in current_msg for x in ["why did you recommend", "why recommend", "compare", "what makes", "what is", "difference", "how long"])
+        if not is_qa:
+            search_turns += 1
             
-    # Fallback to chat
+    if search_turns >= 3:
+        return "pitch"
     return "chat"
 
 
