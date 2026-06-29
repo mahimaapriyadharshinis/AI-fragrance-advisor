@@ -5,13 +5,11 @@
   <img src="static/title_banner.gif" alt="AI Scent Advisor Pixel Title Banner" width="100%">
 </p>
 
-<h1 align="center" style="color: #2C1E38; font-family: monospace;">AI Scent Advisor</h1>
-
 <p align="center" style="color: #504B5A; font-family: monospace; font-size: 1.1em;">
   An enterprise-grade, state-managed conversational recommendation system that guides users to their perfect fragrance using LangGraph state machines, MongoDB, and the Sarvam AI large language model.
 </p>
 
-<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
+<div style="height: 3px; background-color: #D8B4F8; border: none; margin: 25px 0;"></div>
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Conversational System Overview</h2>
 
@@ -54,7 +52,7 @@
   </ul>
 </div>
 
-<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
+<div style="height: 3px; background-color: #D8B4F8; border: none; margin: 25px 0;"></div>
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Olfactory Tech Stack</h2>
 
@@ -117,7 +115,7 @@ fragrance_project/
 └── requirements.txt            # System dependencies manifest
 ```
 
-<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
+<div style="height: 3px; background-color: #D8B4F8; border: none; margin: 25px 0;"></div>
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">System Deployment Guide</h2>
 
@@ -166,6 +164,8 @@ SARVAM_API_KEY=your_sarvam_api_key_here
    ```
 2. Navigate to `http://127.0.0.1:8000/` in a web browser.
 3. Chat with the Scent Advisor to refine your choices. You can click on the dynamic prompt pills (bracketed suggestions) to choose pre-configured paths, or type raw messages detailing the brands and scent notes you prefer or dislike.
+
+<div style="height: 3px; background-color: #D8B4F8; border: none; margin: 25px 0;"></div>
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Conversational API Reference</h2>
 
@@ -252,7 +252,7 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB.
 - **Context Retention**: Maintains user preferences up to 8 conversation turns without losing tracking variables.
 - **Latency**: Under 1.5 seconds average latency per conversational cycle utilizing Sarvam AI streaming endpoints.
 
-<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
+<div style="height: 3px; background-color: #D8B4F8; border: none; margin: 25px 0;"></div>
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Project Acknowledgements</h2>
 
@@ -260,13 +260,6 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB.
 - LangGraph developers for state-management frameworks.
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Project License</h2>
-
-This project is licensed under the MIT License - see the `LICENSE` file for details.
-
-
-
-
-
 
 
 
