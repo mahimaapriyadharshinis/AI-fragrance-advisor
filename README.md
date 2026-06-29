@@ -54,6 +54,8 @@
   </ul>
 </div>
 
+<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
+
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Olfactory Tech Stack</h2>
 
 <p align="center">
@@ -114,6 +116,8 @@ fragrance_project/
 ├── manage.py                   # Administrative entry point
 └── requirements.txt            # System dependencies manifest
 ```
+
+<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">System Deployment Guide</h2>
 
@@ -248,6 +252,8 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB.
 - **Context Retention**: Maintains user preferences up to 8 conversation turns without losing tracking variables.
 - **Latency**: Under 1.5 seconds average latency per conversational cycle utilizing Sarvam AI streaming endpoints.
 
+<hr style="border: none; height: 2px; background: linear-gradient(90deg, rgba(216,180,248,0) 0%, rgba(216,180,248,1) 50%, rgba(247,200,224,1) 75%, rgba(216,180,248,0) 100%);">
+
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Project Acknowledgements</h2>
 
 - Sarvam AI Team for model API support.
@@ -256,6 +262,7 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB.
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Project License</h2>
 
 This project is licensed under the MIT License - see the `LICENSE` file for details.
+
 
 
 
