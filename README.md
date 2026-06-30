@@ -17,15 +17,16 @@
   The AI Scent Advisor is an interactive, multi-turn conversational web application designed to narrow down user preferences for fragrances. Built with a Django backend and MongoDB Atlas, it implements a compiled state machine workflow via LangGraph to route dialogue turns, extract accords, query the product database, handle general scent queries, and format matching recommendations.
 </blockquote>
 
-<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">User Interface & Aesthetics</h2>
+<h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">Core System Features</h2>
 
 <div style="background-color: #FAF7F5; border: 1px solid #F7C8E0; padding: 15px; border-radius: 4px; color: #504B5A; font-family: monospace; margin-bottom: 15px;">
-  To complement the sensory experience of perfumery, this repository features custom pixel-art animations and design styling:
   <ul>
-    <li><strong>Calm Lavender & Rose Gradient Palette</strong>: Visual highlights match a calm Warm Cream, Soft Lavender, and pastel Rose color theme.</li>
-    <li><strong>Animated Store Scenario Banner</strong>: A pixel-art storefront animation showing a customer interacting with fragrance bottles, testing rose mist spray, and triggering interactive feedback.</li>
-    <li><strong>Multi-Colored Neon Scanner Title</strong>: High-contrast title typography where characters glow bright white as a neon scent scanner sweeps across.</li>
-    <li><strong>Glowing Sparkle Dividers</strong>: Animated horizontal separator lines displaying a glowing white shimmer wave to break up sections gracefully on GitHub pages.</li>
+    <li><strong>State-Managed Dialog Routing</strong>: Implements dynamic conversational state trees using compiled LangGraph StateGraph configurations to prevent context loss across multi-turn interactions.</li>
+    <li><strong>Multilingual Query Ingestion</strong>: Automatically detects regional language scripts (such as Tamil and Hindi) and utilizes a dedicated translation node to normalize queries to standard English before database filtering.</li>
+    <li><strong>Dynamic Scent Accord Processing</strong>: Maps natural language descriptors (e.g., fruit, citrus) to standardized accords in the database using LLM classification logic.</li>
+    <li><strong>Resilient Fallback Middleware</strong>: Incorporates safety guardrails and error-handling paths to preserve user conversation counters and active filter parameters during LLM latency or failure.</li>
+    <li><strong>Interactive Suggestion Ingestion</strong>: Parses conversational replies dynamically to extract bracketed keywords and render them as click-interactive prompt pills on the frontend workspace.</li>
+    <li><strong>Glassmorphic Dual-Panel Workspace</strong>: Implements a high-end glassmorphic UI splitting dialogue chat windows and recommended catalog product slots side-by-side.</li>
   </ul>
 </div>
 
@@ -128,7 +129,13 @@ SARVAM_API_KEY=your_sarvam_api_key_here
 
 <h2 style="color: #2C1E38; border-left: 4px solid #D8B4F8; padding-left: 10px;">State Management & Data Pipeline</h2>
 
-### MongoDB Document Schema
+### Architectural Decisions
+
+- **LangGraph State Orchestration**: Traditional LLM chains run in a fixed sequence, which breaks down during conversational shifts (e.g., changing filters mid-dialogue or asking general QA). LangGraph allows **cyclical state transitions** and dynamic routing edges, enabling the advisor to maintain context while pivoting between search, QA, and resetting filters.
+- **State Preservation**: Dialogue states (like brand filters and excluded notes) are preserved inside django-session structures and synchronized with MongoDB. This prevents the LLM from losing track of constraints (e.g. "no sweet scents") during long conversations.
+- **MongoDB Atlas Document DB**: Olfactory catalogs contain highly heterogeneous fields (different accord lengths, varying note descriptions). A document schema provides the flexibility needed for search indexing without complex relational JOIN overhead.
+
+### Database Schema & Ingestion
 
 Fragrance entities are stored inside the `fragrances` collection within MongoDB:
 
@@ -143,6 +150,13 @@ Fragrance entities are stored inside the `fragrances` collection within MongoDB:
   "accords": "Array [String]"
 }
 ```
+
+### Resiliency & Fallback Middleware
+
+To prevent API connection drops from breaking the user session, the backend implements a resilient exception layer:
+- **Connection Guardrails**: If the Sarvam AI API times out, the system catches the exception and intercepts the routing stage.
+- **Dialogue Continuity**: Instead of crashing or losing active state filters, the node defaults to a static localized chat response, prompting the user to try again while preserving all extracted notes and filters.
+
 
 ### LangGraph State Machine Routing
 
