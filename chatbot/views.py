@@ -68,6 +68,12 @@ class ChatbotView(APIView):
                 "user_turns": 0
             }, status=status.HTTP_200_OK)
 
+        clear_history = False
+        new_search_keywords = ["start over", "new search", "different perfume", "recommend a gift", "gift for my", "new scent", "new perfume", "another perfume", "different scent", "new fragrance", "another fragrance", "new vennum", "new perfume vennum"]
+        user_msg_lower = user_message.lower()
+        if any(w in user_msg_lower for w in new_search_keywords):
+            clear_history = True
+
         return Response({
             "bot_reply": outputs.get("bot_reply", ""),
             "recommended_products": outputs.get("recommended_perfumes", []),
@@ -75,5 +81,6 @@ class ChatbotView(APIView):
             "brand_filter": outputs.get("brand_filter", None),
             "disliked_perfumes": outputs.get("disliked_perfumes", []),
             "sort_by_best": outputs.get("sort_by_best", False),
-            "user_turns": outputs.get("user_turns", 0)
+            "user_turns": outputs.get("user_turns", 0),
+            "clear_history": clear_history
         }, status=status.HTTP_200_OK)

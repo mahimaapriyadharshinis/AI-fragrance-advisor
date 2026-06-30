@@ -24,13 +24,55 @@ def is_greeting(text: str) -> bool:
     greetings = ["hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening", "yo", "hi there", "hello there"]
     return text.lower().strip() in greetings
 
-def get_language_instruction(user_msg: str, requested_language: str = None) -> str:
+def get_language_instruction(requested_language: str = None) -> str:
     if requested_language and requested_language.strip().lower() not in ["english", "eng"]:
+        lang = requested_language.strip().capitalize()
+        script_name = f"native {lang.upper()} script/text"
+        if lang.lower() == "hindi":
+            script_name = "Devanagari script (देवनागरी) using native Hindi characters (do NOT use Roman/Latin alphabet or write in Hinglish)"
+        elif lang.lower() == "tamil":
+            script_name = "Tamil script (தமிழ்) using native Tamil characters (do NOT use Roman/Latin alphabet or write in Tanglish)"
+            
         return (
-            f"CRITICAL LANGUAGE RULE: You MUST write your entire final response in {requested_language.upper()} script or text as requested. "
-            "Do NOT write any English sentences. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly."
+            f"CRITICAL LANGUAGE RULE: You MUST write your entire final response in {script_name}. Do NOT reply in English or write in transliterated Latin script. "
+            f"You are strictly FORBIDDEN from spelling out native {lang} words phonetically using Roman/Latin letters (e.g. do NOT write words like 'thottam', 'poovaaga', or 'pudikum' in English characters; they must be written in proper {lang} characters). "
+            f"Translate all English descriptions, scent profile characteristics, and fragrance notes fully into proper, natural {lang}. "
+            f"Do NOT write or mix English words or Latin script inside {lang} sentences (e.g. do NOT use English/transliterated words like 'iconic', 'timeless elegance', 'scent profile', 'notes', 'Floral Fruity fragrance', 'legacy', 'versatility' in Devanagari or Latin script for Hindi. Instead, translate them completely to meaningful, natural {lang} terms). "
+            f"Do NOT include the original English words, transliterated words, or parenthetical translations/duplicates next to the translated words (e.g. do NOT write '(romance)' or '(vertility)' or duplicate words in parentheses). Output ONLY the translated native script words. "
+            f"Keep only brand and perfume names in their original form (or clearly transliterated). "
+            f"Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly."
         )
     return "CRITICAL LANGUAGE RULE: You MUST write your entire final response in ENGLISH. Do NOT translate to any other language."
+
+def sanitize_history_for_language(messages: List[Dict[str, str]], target_lang: str) -> List[Dict[str, str]]:
+    target_low = (target_lang or "").lower().strip()
+    
+    sanitized = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if not content:
+            sanitized.append(msg)
+            continue
+            
+        has_tamil = any(ord(char) >= 0x0B80 and ord(char) <= 0x0BFF for char in content)
+        has_hindi = any(ord(char) >= 0x0900 and ord(char) <= 0x097F for char in content)
+        
+        if target_low == "hindi":
+            if has_tamil:
+                content = "[Language transition: Previously discussed fragrance notes in Tamil]"
+        elif target_low == "tamil":
+            if has_hindi:
+                content = "[Language transition: Previously discussed fragrance notes in Hindi]"
+        else:
+            # Default is English: clean out BOTH foreign scripts to prevent language persistence bias
+            if has_tamil:
+                content = "[Language transition: Previously discussed fragrance notes in Tamil]"
+            elif has_hindi:
+                content = "[Language transition: Previously discussed fragrance notes in Hindi]"
+                
+        sanitized.append({"role": role, "content": content})
+    return sanitized
 
 # 2. Helper function to check if a query is unrelated to fragrances
 def is_query_unrelated(text: str) -> bool:
@@ -57,6 +99,11 @@ def router_edge(state: AgentState) -> str:
     # 2. Fast intercept for greetings
     if is_greeting(user_msg):
         return "chat"
+        
+    # 2.5 Fast intercept for perfume term questions (EDT, EDP, cologne, concentration)
+    qa_terms = ["edt", "edp", "cologne", "parfum", "eau de", "concentration", "sillage", "longevity", "difference between"]
+    if any(term in user_msg_lower for term in qa_terms):
+        return "qa"
         
     # 3. Fast intercept for starting over / new search requests
     new_search_keywords = ["start over", "new search", "different perfume", "recommend a gift", "gift for my", "new scent", "new perfume", "another perfume", "different scent", "new fragrance", "another fragrance", "new vennum", "new perfume vennum"]
@@ -99,8 +146,9 @@ def router_edge(state: AgentState) -> str:
         "- 'decline': The query is completely off-topic (unrelated to perfumes, fragrances, scent notes, smelling, or cosmetic styling).\n"
         "- 'new_search': The user explicitly wants to start a completely new perfume search from scratch, find a different perfume, search for someone else (e.g. 'looking for a perfume for my aunt', 'gift for my husband'), or start over independent of the active recommended options.\n"
         "- 'database_qa': The user is asking a specific question about the database, ratings, perfumers, comparing specific perfumes, requesting info/listings, or asking for the 'best', 'highest rated', or 'most popular' perfumes (e.g., 'whats the best perfume for women', 'compare Junoon and Hayati', 'which is the highest rated?', 'what notes are in Hayati?', 'do you have perfumes by Christian Carbonnel?'). CRITICAL: If the user is asking WHY a perfume was recommended, comparing recommended perfumes, or asking questions about a recommended perfume, classify it as 'database_qa'. Do NOT classify it as 'recommend'.\n"
-        "- 'qa': General questions about perfume terms (EDP vs EDT), longevity, application, how to use scent, or general advice.\n"
+        "- 'qa': General questions about perfume terms (EDP vs EDT), longevity, application, how to use scent, general advice, or describing how a specific note/ingredient smells in general (e.g., 'what does rose smell like?', 'explain how white flowers smell').\n"
         "- 'recommend': The user is looking for perfume suggestions or recommendations based on taste, style, or occasion (e.g., 'recommend me a perfume for the office', 'find my signature scent'), OR refining active recommendations (e.g. 'add vanilla', 'instead of that', 'add jasmine and rose').\n\n"
+        "CRITICAL CLASSIFICATION RULE: If the user message is expressing a personal scent preference, requesting a type of smell, adding/removing notes, or saying what they want their perfume to smell like (e.g., 'i want my perfume to smell floral', 'i want vanilla', 'make it smell like roses'), you MUST classify it as 'recommend'. Do NOT classify it as 'qa' or 'database_qa' under any circumstances.\n\n"
         f"{history_context}"
         f"User Message: {user_msg}\n"
         "Respond with ONLY the category name ('decline', 'new_search', 'database_qa', 'qa', or 'recommend') and absolutely nothing else."
@@ -114,6 +162,10 @@ def router_edge(state: AgentState) -> str:
     if classification and isinstance(classification, str):
         clean_choice = classification.strip().lower()
         if "decline" in clean_choice:
+            # Safety net: override decline if user refers to common perfume terms or names
+            scent_keywords = ["perfume", "fragrance", "scent", "smell", "cologne", "accord", "note", "like", "love", "bottle", "brand", "pudikum", "avalan", "shampoo"]
+            if any(w in user_msg_lower for w in scent_keywords):
+                return "database_qa"
             return "decline"
         elif "new_search" in clean_choice:
             return "new_search"
@@ -133,14 +185,14 @@ def translate_input_node(state: AgentState) -> Dict[str, Any]:
     raw_msg = state.get("user_message", "")
     
     translation_prompt = (
-        "You are a translation assistant. Your goal is to translate the user's message to clear, standard English.\n"
-        "CRITICAL: Do NOT answer the user's message. Do NOT provide suggestions, recommendations, or answers to the user's query.\n"
-        "Your ONLY job is to translate the input message into English.\n"
-        "If the input is already in English, you MUST return the input message exactly as it is, without adding any suggestions or answers.\n"
-        "1. If the message is already in English, return it exactly as is.\n"
-        "2. If the message is in a foreign script (Tamil, Devanagari, French, etc.) or is written phonetically using Latin letters (e.g. 'ennaku pathi sollu', 'ye perfume kaise hai', 'dime sobre este perfume'), translate it to clear, standard English.\n"
-        "3. Preserve all specific scent names, notes, and brand names.\n"
-        "Respond with ONLY the English translation and absolutely nothing else."
+        "You are a translation assistant. Your goal is to translate the user's message to clear, standard English, and detect the language the user wrote in (such as English, Hindi, Tamil, French, Spanish, German, Italian, etc.).\n"
+        "If the input is written in a regional script (e.g. Devanagari or Tamil script) or written phonetically as conversational slang (e.g. Hinglish, Tanglish like 'roja puu epdi smell aagum', 'ye perfume kaisa hai', 'ennaku pathi sollu'), identify the native language (e.g. 'Tamil', 'Hindi') and translate it to standard English.\n"
+        "Return a JSON block with exactly two fields, and absolutely nothing else:\n"
+        "{\n"
+        "  \"translated_text\": \"English translation of the message\",\n"
+        "  \"detected_language\": \"Name of the language (e.g. English, Hindi, Tamil, French, Spanish, German, Italian, etc.)\"\n"
+        "}\n"
+        "CRITICAL: Do NOT wrap in markdown code blocks. Do NOT answer the user's query or add any comments."
     )
     
     messages = [
@@ -148,10 +200,44 @@ def translate_input_node(state: AgentState) -> Dict[str, Any]:
         {"role": "user", "content": raw_msg}
     ]
     
-    translated_msg = call_sarvam_ai(messages).strip()
+    translated_raw = call_sarvam_ai(messages).strip()
     
-    # Check if the user explicitly requested a specific language (e.g. "in tamil", "in french")
+    # Clean markdown formatting if present
+    clean_json = translated_raw
+    if "```" in clean_json:
+        clean_json = clean_json.split("```")[1]
+        if clean_json.startswith("json"):
+            clean_json = clean_json[4:]
+            
+    translated_msg = raw_msg
+    detected_lang = "English"
+    try:
+        data = json.loads(clean_json.strip())
+        translated_msg = data.get("translated_text", raw_msg)
+        detected_lang = data.get("detected_language", "English")
+    except Exception:
+        # Fallback if JSON parse fails
+        translated_msg = translated_raw
+        # Detect manually using simple keyword matching
+        raw_lower = raw_msg.lower()
+        if "in french" in raw_lower or "français" in raw_lower:
+            detected_lang = "French"
+        elif "in tamil" in raw_lower or "தமிழ்" in raw_lower:
+            detected_lang = "Tamil"
+        elif "in hindi" in raw_lower or "hindi" in raw_lower or "हिंदी" in raw_lower:
+            detected_lang = "Hindi"
+        elif "in spanish" in raw_lower or "español" in raw_lower:
+            detected_lang = "Spanish"
+        elif "in german" in raw_lower or "deutsch" in raw_lower:
+            detected_lang = "German"
+        elif "in italian" in raw_lower or "italiano" in raw_lower:
+            detected_lang = "Italian"
+            
     requested_language = None
+    if detected_lang and detected_lang.strip().capitalize() not in ["English", "Eng"]:
+        requested_language = detected_lang.strip().capitalize()
+        
+    # Also support explicit override keywords in raw message
     raw_lower = raw_msg.lower()
     if "in french" in raw_lower or "français" in raw_lower:
         requested_language = "French"
@@ -205,37 +291,40 @@ def clarifying_chat_node(state: AgentState) -> Dict[str, Any]:
         "# Preference Refinement Question\n"
         "- Ask exactly ONE relevant clarifying question in simple English to build and refine the user's note profile.\n"
         "- The purpose of your question is to help the user discover and add complementary notes or accords to their preference (e.g., if they selected floral notes, suggest adding fresh citrus, warm vanilla, or earthy woody notes to complement them).\n"
-        "- Never conclude the conversation or say you are ready to find a bottle; always ask how to expand or refine their note list.\n\n"
+        "- Never conclude the conversation or say you are ready to find a bottle; always ask how to expand or refine their note list.\n"
+        "- CRITICAL: Do NOT ask an open-ended conversational question AND a specific note/accord question in the same response. You MUST ask exactly ONE question total, which must lead directly to the options shown in the square brackets. Do NOT write multiple sentences asking different questions.\n\n"
         "# Suggestion Buttons Formatting\n"
         "- At the very end of your response, after your clarifying question is fully complete, provide EXACTLY 2 or 3 complementary suggestion options/accords (absolutely never more than 3, and never fewer than 2) formatted in square brackets.\n"
         "- These options MUST be extremely common, simple, and universally recognizable scent notes or ingredients in simple English (such as Vanilla, Musk, Sandalwood, Rose, Jasmine, Coconut, Lemon, Mint, Lavender, or Orange) that average consumers easily know. If the user query is about a category (like seasons or occasions), suggest 2 or 3 representative scent styles/accords (e.g., [Crisp Citrus] [Warm Sandalwood] [Cozy Amber]). Do not list categories directly if they exceed 3 options.\n"
+        "- Do NOT suggest notes or accords that the user has already selected or mentioned in the active conversation history (e.g. if the user just selected Earthy Vetiver, do NOT suggest Earthy Vetiver again in the bracketed options. Show new complementary options instead).\n"
         "- Do NOT suggest complicated, niche, or obscure ingredients (like Jasmine Sambac, Petitgrain, Oud, Bergamot, Neroli, or Tonka Bean).\n"
         "- The options must totally relate to the question.\n"
         "- Do NOT write any words, conjunctions, or punctuation between, before, or after the square brackets.\n"
-        "- Standard format to copy: 'Would you like to add some fresh citrus brightness or warm woody depth to your rose and jasmine? [Fresh Lemon & Lime] [Warm Sandalwood & Amber]'\n\n"
+        "- Output format structure example: A brief sentence asking to complement/refine their profile, followed immediately by exactly 2 or 3 suggestion options in square brackets (e.g., 'Would you like to add some fresh citrus brightness or warm woody depth to complement your preferences? [Fresh Lemon & Lime] [Warm Sandalwood & Amber]'). Do NOT copy this example question or options literally; generate a completely unique question and different options based on the user's specific taste.\n- CRITICAL: Adapt the question to the user's actual preferences. Do NOT mention notes they have not selected (e.g. do NOT mention rose and jasmine unless they selected them).\n\n"
         "# Language Rule\n"
         "- Analyze the user's LATEST message (the last message in the conversation).\n"
         "- If the user's LATEST message is written in a language other than English, or explicitly asks for the response to be in a specific language (such as Hindi, Tamil, French, Spanish, etc.), or is written in conversational transliterated slang (e.g. 'indha perfume pathi sollu'), you MUST generate your entire final reply in that native language or script. Otherwise, you MUST reply in English.\n"
         "- CRITICAL: If the previous turns were in a foreign language, but the user's LATEST message is in English and does not explicitly ask for a translation, you MUST switch back to English immediately. Do NOT continue in the foreign language unless explicitly asked.\n"
         "- Preserve all bullet point styling ('●') and blank line spacing in all languages.\n\n"
         "# Critical Execution Limit\n"
-        "- REASONING LIMIT: Keep your internal thinking/reasoning extremely brief (under 1 sentence).\n"
+        "- REASONING LIMIT: Keep your internal thinking/reasoning extremely brief (under 1 sentence). Do NOT over-optimize, draft multiple revisions, or recursively shorten your response in your thoughts. Draft the response once and output it immediately without any revisions.\n"
         "- Do NOT repeat your thoughts, checks, or revisions.\n"
         "- **ANTI-LOOP RULE**: Do NOT repeat any sentence, question, or word sequence within your response. Every sentence in your reply must be completely unique. Do NOT loop.\n"
         "- Generate the final response immediately. If you detect any repetition in your output, stop immediately and emit your final response with exactly 2 or 3 bracketed options."
     )
     
-    messages = [{"role": "system", "content": convo_system_prompt}]
-    for msg in (state.get("messages") or []):
-        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    user_msg = state.get("user_message") or ""
     lang = state.get("requested_language")
-    user_content = user_msg
-    if lang and lang.strip().lower() not in ["english", "eng"]:
-        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
-    else:
-        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
-    messages.append({"role": "user", "content": user_content})
+    lang_instruction = get_language_instruction(lang)
+    convo_system_prompt_with_lang = f"{convo_system_prompt}\n\n{lang_instruction}"
+    messages = [{"role": "system", "content": convo_system_prompt_with_lang}]
+    sanitized_history = sanitize_history_for_language(state.get("messages") or [], lang)
+    for msg in sanitized_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    
+    final_user_content = user_msg
+    if lang and lang.lower() not in ["english", "eng"]:
+        final_user_content += f"\n\nCRITICAL: You MUST write your entire response in the native script of {lang} (e.g. Tamil script for Tamil, Devanagari script for Hindi). Do NOT use English/Latin script."
+    messages.append({"role": "user", "content": final_user_content})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or "Error from Sarvam API" in reply or "Connection Failed" in reply:
@@ -722,39 +811,41 @@ def generate_pitch_node(state: AgentState) -> Dict[str, Any]:
         f"- Default to English if no override is requested.\n\n"
         f"## 2. Conversation Constraints\n"
         f"- Do NOT invite the user to store appointments, private viewings, or offline/in-person services.\n"
-        f"- Do NOT mention, pitch, or reference perfumes from previous turns of the chat history. Focus strictly on the current Primary Choices.\n\n"
+        f"- Do NOT pitch or reference perfumes recommended in previous search cycles (i.e. before the last new search reset). You MUST focus strictly on and pitch the 3 perfumes listed in the current PRIMARY CHOICES.\n\n"
         f"## 3. Formatting Restrictions\n"
         f"- Do NOT use markdown bolding (**) or headings (###).\n"
-        f"- FORBIDDEN: Do NOT use square brackets anywhere in the response text (e.g., do not write [Name] or [Note]). Doing so breaks the UI.\n\n"
+        f"- FORBIDDEN: Do NOT use square brackets anywhere in the response text (e.g., do not write [Name] or [Note]). Doing so breaks the UI. You are strictly forbidden from outputting suggestion options, accords, or trailing option buttons in brackets under any circumstances.\n\n"
         f"## 4. Response Structure & Layout\n"
         f"Choose the layout format based on the user's latest request:\n"
         f"- **Case A: Explicit Comparison Request** (if they ask to compare/contrast notes): Write a detailed, luxurious comparison analysis of the Primary Choices. Format with paragraphs separated by double newlines.\n"
         f"- **Case B: Specific Data Question** (e.g., asking for rating values): Answer their question accurately using the database context. Format with paragraphs separated by double newlines.\n"
-        f"- **Case C: Note Specifications / Scent Preferences / Default Pitch**:\n"
+        f"- **Case C: Note Specifications / Scent Preferences / Default Pitch** (for note selections, preference additions, or button clicks):\n"
+        f"  - CRITICAL: You are strictly FORBIDDEN from writing any general paragraphs about notes or explaining/complimenting them conversationally. You MUST strictly generate the default 3-perfume pitch.\n"
         f"  - Start response with exactly: \"Here is a little about your perfumes:\" followed by a double newline.\n"
         f"  - Generate exactly 3 separate paragraphs (one for each of the Primary Choices in their exact order: {', '.join(allowed_names)}).\n"
-        f"  - Format each paragraph as: `EXACT_PERFUME_NAME: Scent pitch explanation`\n"
+        f"  - Format each paragraph by starting with the actual perfume name as it appears in the primary choices catalog, followed by a colon and space, and then the pitch explanation (e.g., 'Casbah Avon for women: [pitch explanation]'). Do NOT output the literal words 'EXACT_PERFUME_NAME' under any circumstances.\n"
         f"  - Keep the exact name casing from the context (do not use all caps, do not omit any words).\n"
         f"  - Limit each pitch explanation strictly to a maximum of 2 lines of text (approx 20-30 words).\n"
         f"  - Append a brief sentence suggesting that the user can ask to explore more options or refine search parameters.\n"
         f"  - CRITICAL: You are strictly FORBIDDEN from writing any extra paragraphs, top recommendations, concluding summaries, or sentences below the 3 pitched perfumes. The response MUST end immediately after the 3rd perfume's pitch or the exploration suggestion sentence. Do NOT mention why one is a top recommendation.\n\n"
-        f"# Execution Limits\n"
-        f"- REASONING LIMIT: Your internal thinking must be extremely brief (under 1 sentence).\n"
+        f"- REASONING LIMIT: Your internal thinking must be extremely brief (under 1 sentence). Limit your internal thinking to exactly 1 sentence. Do NOT over-optimize, draft multiple revisions, or recursively shorten your response in your thoughts. Draft the response once and output it immediately without any revisions.\n"
         f"- Do NOT repeat your thoughts, revisions, checks, or formatting evaluations.\n"
         f"- ANTI-LOOP RULE: Every sentence in your thoughts and final output must be completely unique. If you detect any repetition, immediately stop thinking and print the final response."
     )
     
-    messages = [{"role": "system", "content": sales_system_prompt}]
-    for msg in state.get("messages", []):
-        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
     user_msg = state.get("user_message") or ""
     lang = state.get("requested_language")
-    user_content = user_msg
-    if lang and lang.strip().lower() not in ["english", "eng"]:
-        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
-    else:
-        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
-    messages.append({"role": "user", "content": user_content})
+    lang_instruction = get_language_instruction(lang)
+    sales_system_prompt_with_lang = f"{sales_system_prompt}\n\n{lang_instruction}"
+    messages = [{"role": "system", "content": sales_system_prompt_with_lang}]
+    sanitized_history = sanitize_history_for_language(state.get("messages") or [], lang)
+    for msg in sanitized_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    
+    final_user_content = user_msg
+    if lang and lang.lower() not in ["english", "eng"]:
+        final_user_content += f"\n\nCRITICAL: You MUST write your entire response in the native script of {lang} (e.g. Tamil script for Tamil, Devanagari script for Hindi). Do NOT use English/Latin script."
+    messages.append({"role": "user", "content": final_user_content})
     
     pitch = call_sarvam_ai(messages)
     
@@ -851,17 +942,18 @@ def qa_node(state: AgentState) -> Dict[str, Any]:
         "- Generate the final response immediately."
     )
     
-    messages = [{"role": "system", "content": qa_system_prompt}]
-    for msg in state.get("messages", []):
-        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    user_msg = state.get("user_message") or ""
     lang = state.get("requested_language")
-    user_content = user_msg
-    if lang and lang.strip().lower() not in ["english", "eng"]:
-        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
-    else:
-        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
-    messages.append({"role": "user", "content": user_content})
+    lang_instruction = get_language_instruction(lang)
+    qa_system_prompt_with_lang = f"{qa_system_prompt}\n\n{lang_instruction}"
+    messages = [{"role": "system", "content": qa_system_prompt_with_lang}]
+    sanitized_history = sanitize_history_for_language(state.get("messages") or [], lang)
+    for msg in sanitized_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    
+    final_user_content = user_msg
+    if lang and lang.lower() not in ["english", "eng"]:
+        final_user_content += f"\n\nCRITICAL: You MUST write your entire response in the native script of {lang} (e.g. Tamil script for Tamil, Devanagari script for Hindi). Do NOT use English/Latin script."
+    messages.append({"role": "user", "content": final_user_content})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -907,17 +999,13 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
             "8. REASONING LIMIT: Keep your internal thinking/reasoning extremely brief (under 1 sentence). Do NOT repeat your thoughts, checks, or revisions. Do NOT loop. Generate the final response immediately."
         )
         
-        messages = [{"role": "system", "content": answer_prompt}]
+        lang = state.get("requested_language")
+        lang_instruction = get_language_instruction(lang)
+        answer_prompt_with_lang = f"{answer_prompt}\n\n{lang_instruction}"
+        messages = [{"role": "system", "content": answer_prompt_with_lang}]
         for msg in state.get("messages", []):
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-        user_msg = state.get("user_message") or ""
-        lang = state.get("requested_language")
-        user_content = user_msg
-        if lang and lang.strip().lower() not in ["english", "eng"]:
-            user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
-        else:
-            user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
-        messages.append({"role": "user", "content": user_content})
+        messages.append({"role": "user", "content": user_msg})
         
         reply = call_sarvam_ai(messages)
         if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -1110,17 +1198,18 @@ def database_qa_node(state: AgentState) -> Dict[str, Any]:
         "9. REASONING LIMIT: Keep your internal thinking/reasoning extremely brief (under 1 sentence). Do NOT repeat your thoughts, checks, or revisions. Do NOT loop. Generate the final response immediately."
     )
     
-    messages = [{"role": "system", "content": answer_prompt}]
-    for msg in state.get("messages", []):
-        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-    user_msg = state.get("user_message") or ""
     lang = state.get("requested_language")
-    user_content = user_msg
-    if lang and lang.strip().lower() not in ["english", "eng"]:
-        user_content += f"\n\n(CRITICAL: You MUST write your entire final response in {lang.upper()} script/text. Do NOT reply in English, Tamil, or any other language. Always preserve the bullet point structure (solid circle '●' and blank line spacing) exactly.)"
-    else:
-        user_content += "\n\n(CRITICAL: You MUST write your entire final response in ENGLISH.)"
-    messages.append({"role": "user", "content": user_content})
+    lang_instruction = get_language_instruction(lang)
+    answer_prompt_with_lang = f"{answer_prompt}\n\n{lang_instruction}"
+    messages = [{"role": "system", "content": answer_prompt_with_lang}]
+    sanitized_history = sanitize_history_for_language(state.get("messages") or [], lang)
+    for msg in sanitized_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    
+    final_user_content = user_msg
+    if lang and lang.lower() not in ["english", "eng"]:
+        final_user_content += f"\n\nCRITICAL: You MUST write your entire response in the native script of {lang} (e.g. Tamil script for Tamil, Devanagari script for Hindi). Do NOT use English/Latin script."
+    messages.append({"role": "user", "content": final_user_content})
     
     reply = call_sarvam_ai(messages)
     if not reply or not isinstance(reply, str) or any(err in reply for err in ["Error", "Failed", "null", "exhausted"]):
@@ -1139,7 +1228,8 @@ def new_search_node(state: AgentState) -> Dict[str, Any]:
         "brand_filter": None,
         "accords_list": [],
         "refined_notes": [],
-        "gender_filter": "for women and men"
+        "gender_filter": "for women and men",
+        "requested_language": None
     }
 
 

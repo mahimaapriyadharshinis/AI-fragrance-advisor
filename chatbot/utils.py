@@ -68,6 +68,38 @@ def import_csv_to_mongodb():
         return {"status": "success", "count": len(records)}
     return {"status": "error", "message": "No valid rows extracted"}
 
+def clean_repetition(text: str) -> str:
+    if not text or not isinstance(text, str):
+        return text
+        
+    # 1. Line-level repetition check
+    lines = text.split("\n")
+    seen_lines = set()
+    filtered_lines = []
+    for line in lines:
+        line_clean = line.strip()
+        if line_clean and line_clean in seen_lines:
+            break
+        if line_clean:
+            seen_lines.add(line_clean)
+        filtered_lines.append(line)
+        
+    text_no_line_repeat = "\n".join(filtered_lines)
+    
+    # 2. Paragraph-level repetition check
+    paragraphs = text_no_line_repeat.split("\n\n")
+    seen_paragraphs = set()
+    filtered_paragraphs = []
+    for p in paragraphs:
+        p_clean = p.strip()
+        if p_clean and p_clean in seen_paragraphs:
+            break
+        if p_clean:
+            seen_paragraphs.add(p_clean)
+        filtered_paragraphs.append(p)
+        
+    return "\n\n".join(filtered_paragraphs)
+
 # 3. Core Sarvam AI Integration Layer
 import time
 
@@ -102,7 +134,7 @@ def call_sarvam_ai(messages_list, max_tokens=3500):
                     print(f"[ERROR call_sarvam_ai] {last_error}. Response: {response.text}")
                     time.sleep(2 ** attempt)
                     continue
-                return content
+                return clean_repetition(content)
             elif response.status_code in [429, 500, 502, 503, 504]:
                 # Retry on rate limits or temporary server-side errors
                 last_error = f"Error from Sarvam API: {response.status_code} - {response.text}"

@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeBrandFilter = null;
     let activeSortByBest = false;
     let activeUserTurns = 0;
+    let isSubmitting = false;
  
     // Attach click events to the quick-prompt pills
     document.querySelectorAll('.prompts-grid .prompt-pill').forEach(pill => {
@@ -68,6 +69,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
  
     async function submitQuery(query) {
+        if (isSubmitting) return;
+        isSubmitting = true;
+        
         // Clear input field
         userInput.value = '';
  
@@ -125,6 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
             });
  
             // Save this exchange in memory
+            if (data.clear_history) {
+                conversationHistory = [];
+            }
             conversationHistory.push({role: "user", content: query});
             conversationHistory.push({role: "assistant", content: data.bot_reply});
  
@@ -150,6 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error fetching chat response:', error);
             appendChatBubble(`My apologies. I encountered an issue connecting to the perfume directory server. Detail: ${error.message}`, 'bot');
         } finally {
+            isSubmitting = false;
             loadingIndicator.classList.add('hidden');
             // Auto scroll to bottom
             chatHistory.scrollTop = chatHistory.scrollHeight;
